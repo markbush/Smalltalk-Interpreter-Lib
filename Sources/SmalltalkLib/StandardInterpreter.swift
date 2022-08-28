@@ -777,4 +777,152 @@ class StandardInterpreter : Interpreter {
     }
     dispatchPrivatePrimitives()
   }
+  func dispatchArithmeticPrimitives() {
+    if primitiveIndex < 20 {
+      dispatchIntegerPrimitives()
+      return
+    }
+    if primitiveIndex < 40 {
+      dispatchLargeIntegerPrimitives()
+      return
+    }
+    if primitiveIndex < 60 {
+      dispatchFloatPrimitives()
+      return
+    }
+  }
+  func dispatchIntegerPrimitives() {
+    switch primitiveIndex {
+    case 1: primitiveAdd()
+    case 2: primitiveSubtract()
+    case 3: primitiveLessThan()
+    case 4: primitiveGreaterThan()
+    case 5: primitiveLessOrEqual()
+    case 6: primitiveGreaterOrEqual()
+    case 7: primitiveEqual()
+    case 8: primitiveNotEqual()
+    case 9: primitiveMultiply()
+    case 10: primitiveDivide()
+    case 11: primitiveMod()
+    case 12: primitiveDiv()
+    case 13: primitiveQuo()
+    case 14: primitiveBitAnd()
+    case 15: primitiveBitOr()
+    case 16: primitiveBitXor()
+    case 17: primitiveBitShift()
+    case 18: primitiveMakePoint()
+    default: break
+    }
+  }
+  func primitiveAdd() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver + integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveSubtract() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver - integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveMultiply() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver * integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveDivide() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    success(integerArgument != 0)
+    if success {
+      // Would get a divide by 0 error if the arg was 0
+      // so only perform if the previous check succeeded
+      success(integerReceiver % integerArgument == 0)
+    }
+    if success {
+      integerResult = integerReceiver / integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveMod() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    success(integerArgument != 0)
+    if success {
+      integerResult = integerReceiver % integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveDiv() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    success(integerArgument != 0)
+    if success {
+      integerResult = integerReceiver / integerArgument
+      // Ensure we round to negative infinity if it was not exact
+      if (integerReceiver % integerArgument != 0) && (integerResult < 0) {
+        integerResult -= 1
+      }
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveQuo() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    success(integerArgument != 0)
+    if success {
+      integerResult = integerReceiver / integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
 }
