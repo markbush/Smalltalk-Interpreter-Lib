@@ -31,6 +31,10 @@ class StandardInterpreter : Interpreter {
   let MessageSelectorIndex = 0
   let MessageArgumentsIndex = 1
   let MessageSize = 2
+  // Point constants
+  let XIndex = 0
+  let YIndex = 1
+  let ClassPointSize = 2
 
   let memory: ObjectMemory
   var success = true
@@ -1056,5 +1060,24 @@ class StandardInterpreter : Interpreter {
     } else {
       unPop(2)
     }
+  }
+  func primitiveMakePoint() {
+    let integerArgument = popStack()
+    let integerReceiver = popStack()
+    // Error in Blue Book?
+    success(memory.isIntegerObject(integerReceiver))
+    success(memory.isIntegerObject(integerArgument))
+    if success {
+      let pointResult = memory.instantiateClass(OOPS.ClassPointPointer, withPointers: ClassPointSize)
+      memory.storePointer(XIndex, ofObject: pointResult, withValue: integerReceiver)
+      memory.storePointer(YIndex, ofObject: pointResult, withValue: integerArgument)
+      push(pointResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func dispatchLargeIntegerPrimitives() {
+    // TODO: maybe implement these?
+    primitiveFail()
   }
 }
