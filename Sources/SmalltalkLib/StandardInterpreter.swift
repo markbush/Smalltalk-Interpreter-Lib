@@ -692,7 +692,7 @@ class StandardInterpreter : Interpreter {
     case 180: primitiveLessOrEqual()
     case 181: primitiveGreaterOrEqual()
     case 182: primitiveEqual()
-    case 183: primitiveNotEquat()
+    case 183: primitiveNotEqual()
     case 184: primitiveMultiply()
     case 185: primitiveDivide()
     case 186: primitiveMod()
@@ -921,6 +921,84 @@ class StandardInterpreter : Interpreter {
     }
     if success {
       pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveEqual() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver == integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveNotEqual() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver != integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveLessThan() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver < integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveLessOrEqual() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver <= integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveGreaterThan() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver > integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveGreaterOrEqual() {
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      if integerReceiver >= integerArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
     } else {
       unPop(2)
     }
