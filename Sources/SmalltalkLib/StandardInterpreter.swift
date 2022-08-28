@@ -78,6 +78,10 @@ class StandardInterpreter : Interpreter {
       toIndex += 1
     }
   }
+  func byte(_ byteNum: Int, of anInteger: SignedWord) -> Byte {
+    let value = anInteger >> ((BytesPerWord - byteNum - 1) * 8)
+    return Byte(value & 0xFF)
+  }
   func headerOf(_ methodPointer: OOP) -> Word {
     return memory.fetchPointer(HeaderIndex, ofObject: methodPointer)
   }
@@ -612,6 +616,9 @@ class StandardInterpreter : Interpreter {
     sendSelectorToClass(superclassOf(methodClass))
   }
 
+  func success(_ successValue: Bool) {
+    success = successValue && success
+  }
   func initPrimitive() {
     success = true
   }
@@ -619,10 +626,155 @@ class StandardInterpreter : Interpreter {
     success = false
     return 0
   }
-  func primitiveResponse() -> Bool {
-    return false
+  func popInteger() -> SignedWord {
+    let integerPointer = popStack()
+    success(memory.isIntegerObject(integerPointer))
+    if success {
+      return memory.integerValueOf(integerPointer)
+    }
+    // TODO: is this ok? (success is false so value should get unpopped...)
+    return 0
+  }
+  func pushInteger(_ integerValue: SignedWord) {
+    push(memory.integerObjectOf(integerValue))
+  }
+  // The Blue Book requires positive16BitIntegerFor but we support 32 bit
+  // SmallIntegers so a 16bit LargePositiveInteger will never be needed.
+  func positive32BitIntegerFor(_ integerValue: SignedWord) -> OOP {
+    if integerValue < 0 {
+      return OOP(primitiveFail())
+    }
+    if memory.isIntegerValue(integerValue) {
+      return memory.integerObjectOf(integerValue)
+    }
+    let newLargeInteger = memory.instantiateClass(OOPS.ClassLargePositiveIntegerPointer, withBytes: 4)
+    memory.storeByte(0, ofObject: newLargeInteger, withValue: byte(0, of: integerValue))
+    memory.storeByte(1, ofObject: newLargeInteger, withValue: byte(1, of: integerValue))
+    memory.storeByte(2, ofObject: newLargeInteger, withValue: byte(2, of: integerValue))
+    memory.storeByte(3, ofObject: newLargeInteger, withValue: byte(3, of: integerValue))
+    return newLargeInteger
+  }
+  func positive32BitValueOf(_ integerPointer: OOP) -> SignedWord {
+    if memory.isIntegerObject(integerPointer) {
+      return memory.integerValueOf(integerPointer)
+    }
+    if memory.fetchClassOf(integerPointer) != OOPS.ClassLargePositiveIntegerPointer {
+      return SignedWord(primitiveFail())
+    }
+    if memory.fetchByteLengthOf(integerPointer) != 4 {
+      return SignedWord(primitiveFail())
+    }
+    var value = SignedWord(memory.fetchByte(3, ofObject: integerPointer))
+    value = (value << 8) | SignedWord(memory.fetchByte(2, ofObject: integerPointer))
+    value = (value << 8) | SignedWord(memory.fetchByte(1, ofObject: integerPointer))
+    value = (value << 8) | SignedWord(memory.fetchByte(0, ofObject: integerPointer))
+    return value
   }
   func specialSelectorPrimitiveResponse() -> Bool {
-    return false
+    initPrimitive()
+    if currentBytecode <= 191 {
+      arithmeticSelectorPrimitive()
+    } else {
+      commonSelectorPrimitive()
+    }
+    return success
+  }
+  func arithmeticSelectorPrimitive() {
+    success(memory.isIntegerObject(stackValue(1)))
+    if !success {
+      return
+    }
+    switch currentBytecode {
+    case 176: primitiveAdd()
+    case 177: primitiveSubtract()
+    case 178: primitiveLessThan()
+    case 179: primitiveGreaterThan()
+    case 180: primitiveLessOrEqual()
+    case 181: primitiveGreaterOrEqual()
+    case 182: primitiveEqual()
+    case 183: primitiveNotEquat()
+    case 184: primitiveMultiply()
+    case 185: primitiveDivide()
+    case 186: primitiveMod()
+    case 187: primitiveMakePoint()
+    case 188: primitiveBitShift()
+    case 189: primitiveDiv()
+    case 190: primitiveBitAnd()
+    case 191: primitiveBitOr()
+    default: break
+    }
+  }
+  func commonSelectorPrimitive() {
+    let count = (Int(currentBytecode) - 176) * 2 + 1
+    argumentCount = Int(fetchInteger(count, ofObject: OOPS.SpecialSelectorsPointer))
+    let receiverClass = memory.fetchClassOf(stackValue(argumentCount))
+    switch currentBytecode {
+    case 198: primitiveEquivalent()
+    case 199: primitiveClass()
+    case 200:
+      success((receiverClass == OOPS.ClassMethodContextPointer) || (receiverClass == OOPS.ClassBlockContextPointer))
+      if success {
+        primitiveBlockCopy()
+      }
+    case 201, 202:
+      success(receiverClass == OOPS.ClassBlockContextPointer)
+      if success {
+        primitiveValue()
+      }
+    default: primitiveFail()
+    }
+  }
+  func primitiveResponse() -> Bool {
+    if primitiveIndex == 0 {
+      let flagValue = flagValueOf(newMethod)
+      if flagValue == 5 {
+        quickReturnSelf()
+        return true
+      }
+      if flagValue == 6 {
+        quickInstanceLoad()
+        return true
+      }
+      return false
+    } else {
+      initPrimitive()
+      dispatchPrimitives()
+      return success
+    }
+  }
+  func quickReturnSelf() {
+    // nothing to do
+  }
+  func quickInstanceLoad() {
+    let thisReceiver = popStack()
+    let fieldIndex = fieldIndexOf(newMethod)
+    push(memory.fetchPointer(fieldIndex, ofObject: thisReceiver))
+  }
+  func dispatchPrimitives() {
+    if primitiveIndex < 60 {
+      dispatchArithmeticPrimitives()
+      return
+    }
+    if primitiveIndex < 68 {
+      dispatchSubscriptAndStreamPrimitives()
+      return
+    }
+    if primitiveIndex < 80 {
+      dispatchStorageManagementPrimitives()
+      return
+    }
+    if primitiveIndex < 90 {
+      dispatchControlPrimitives()
+      return
+    }
+    if primitiveIndex < 110 {
+      dispatchInputOutputPrimitives()
+      return
+    }
+    if primitiveIndex < 128 {
+      dispatchSystemPrimitives()
+      return
+    }
+    dispatchPrivatePrimitives()
   }
 }
