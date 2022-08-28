@@ -1003,4 +1003,58 @@ class StandardInterpreter : Interpreter {
       unPop(2)
     }
   }
+  func primitiveBitAnd() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver & integerArgument
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveBitOr() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver | integerArgument
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveBitXor() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      integerResult = integerReceiver ^ integerArgument
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveBitShift() {
+    var integerResult: SignedWord = 0
+    let integerArgument = popInteger()
+    let integerReceiver = popInteger()
+    if success {
+      // Swift handles negative shits the same as Smalltalk
+      integerResult = integerReceiver << integerArgument
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(2)
+    }
+  }
 }
