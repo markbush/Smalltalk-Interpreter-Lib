@@ -126,7 +126,10 @@ class StandardInterpreter : Interpreter {
     return Int((headerOf(methodPointer) & 0x0080) >> 7)
   }
   func literalCountOf(_ methodPointer: OOP) -> Int {
-    return Int((headerOf(methodPointer) & 0x7E) >> 1)
+    return literalCountOfHeader(headerOf(methodPointer))
+  }
+  func literalCountOfHeader(_ headerPointer: OOP) -> Int {
+    return Int((headerPointer & 0x7E) >> 1)
   }
   func objectPointerCountOf(_ methodPointer: OOP) -> Int {
     return literalCountOf(methodPointer) + LiteralStart
@@ -1525,6 +1528,175 @@ class StandardInterpreter : Interpreter {
       unPop(1)
     }
   }
+  func dispatchStorageManagementPrimitives() {
+    switch primitiveIndex {
+    case 68: primitiveObjectAt()
+    case 69: primitiveObjectAtPut()
+    case 70: primitiveNew()
+    case 71: primitiveNewWithArg()
+    case 72: primitiveBecome()
+    case 73: primitiveInstVarAt()
+    case 74: primitiveInstVarAtPut()
+    case 75: primitiveAsOop()
+    case 76: primitiveAsObject()
+    case 77: primitiveSomeInstance()
+    case 78: primitiveNextInstance()
+    case 79: primitiveNewMethod()
+    default: primitiveFail()
+    }
+  }
+  func primitiveObjectAt() {
+    let index = Int(popInteger())
+    let thisReceiver = popStack()
+    success(index > 0)
+    success(index <= objectPointerCountOf(thisReceiver))
+    if success {
+      push(memory.fetchPointer(index - 1, ofObject: thisReceiver))
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveObjectAtPut() {
+    let newValue = popStack()
+    let index = Int(popInteger())
+    let thisReceiver = popStack()
+    success(index > 0)
+    success(index <= objectPointerCountOf(thisReceiver))
+    if success {
+      memory.storePointer(index - 1, ofObject: thisReceiver, withValue: newValue)
+      push(newValue)
+    } else {
+      unPop(3)
+    }
+  }
+  func primitiveNew() {
+    let theClass = popStack()
+    let size = fixedFieldsOf(theClass)
+    success(!isIndexable(theClass))
+    if success {
+      if isPointers(theClass) {
+        push(memory.instantiateClass(theClass, withPointers: size))
+      } else {
+        push(memory.instantiateClass(theClass, withWords: size))
+      }
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveNewWithArg() {
+    var size = Int(positive32BitValueOf(popStack()))
+    let theClass = popStack()
+    success(isIndexable(theClass))
+    if success {
+      size += fixedFieldsOf(theClass)
+      if isPointers(theClass) {
+        push(memory.instantiateClass(theClass, withPointers: size))
+      } else {
+        if isWords(theClass) {
+          push(memory.instantiateClass(theClass, withWords: size))
+        } else {
+          push(memory.instantiateClass(theClass, withBytes: size))
+        }
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveBecome() {
+    let otherPointer = popStack()
+    let thisReceiver = popStack()
+    success(!memory.isIntegerObject(otherPointer))
+    success(!memory.isIntegerObject(thisReceiver))
+    if success {
+      memory.swapPointersOf(thisReceiver, and: otherPointer)
+      push(thisReceiver)
+    } else {
+      unPop(2)
+    }
+  }
+  func checkInstanceVariableBoundsOf(_ index: Int, in object: OOP) {
+    // let theClass = memory.fetchClassOf(object)
+    success(index >= 1)
+    success(index <= lengthOf(object))
+  }
+  func primitiveInstVarAt() {
+    var value: OOP = 0
+    let index = Int(popInteger())
+    let thisReceiver = popStack()
+    checkInstanceVariableBoundsOf(index, in: thisReceiver)
+    if success {
+      value = subscriptOf(thisReceiver, with: index)
+    }
+    if success {
+      push(value)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveInstVarAtPut() {
+    let newValue = popStack()
+    let index = Int(popInteger())
+    let thisReceiver = popStack()
+    checkInstanceVariableBoundsOf(index, in: thisReceiver)
+    if success {
+      subscriptOf(thisReceiver, with: index, storing: newValue)
+    }
+    if success {
+      push(newValue)
+    } else {
+      unPop(3)
+    }
+  }
+  func primitiveAsOop() {
+    let thisReceiver = popStack()
+    success(!memory.isIntegerObject(thisReceiver))
+    if success {
+      push(thisReceiver | 1)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveAsObject() {
+    let thisReceiver = popStack()
+    let newOop = thisReceiver & 0xFFFFFFFE
+    success(memory.hasObject(newOop))
+    if success {
+      push(newOop)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveSomeInstance() {
+    let theClass = popStack()
+    let instance = memory.initialInstanceOf(theClass)
+    if instance != OOPS.NilPointer {
+      push(instance)
+    } else {
+      primitiveFail()
+    }
+  }
+  func primitiveNextInstance() {
+    let object = popStack()
+    let instance = memory.instanceAfter(object)
+    if instance != OOPS.NilPointer {
+      push(instance)
+    } else {
+      primitiveFail()
+    }
+  }
+  func primitiveNewMethod() {
+    let header = popStack()
+    let bytecodeCount = Int(popInteger())
+    let theClass = popStack()
+    let literalCount = literalCountOfHeader(header)
+    let size = ((literalCount + 1) * BytesPerWord) + bytecodeCount
+    let newMethod = memory.instantiateClass(theClass, withBytes: size)
+    for i in 0 ..< literalCount {
+      memory.storeWord(LiteralStart + i, ofObject: newMethod, withValue: OOPS.NilPointer)
+    }
+    memory.storeWord(HeaderIndex, ofObject: newMethod, withValue: header)
+    push(newMethod)
+  }
 
 
   func primitiveEquivalent() {
@@ -1539,8 +1711,6 @@ class StandardInterpreter : Interpreter {
   func dispatchControlPrimitives() {
   }
   func dispatchInputOutputPrimitives() {
-  }
-  func dispatchStorageManagementPrimitives() {
   }
   func dispatchSystemPrimitives() {
   }

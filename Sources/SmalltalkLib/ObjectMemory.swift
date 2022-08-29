@@ -1,4 +1,5 @@
 protocol ObjectMemory {
+  func hasObject(_ objectPointer: OOP) -> Bool
   // object pointer access
   func fetchPointer(_ fieldIndex: Int, ofObject objectPointer: OOP) -> OOP
   func storePointer(_ fieldIndex: Int, ofObject objectPointer: OOP, withValue valuePointer: OOP)
@@ -21,8 +22,8 @@ protocol ObjectMemory {
   func instantiateClass(_ classPointer: OOP, withWords length: Int) -> OOP
   func instantiateClass(_ classPointer: OOP, withBytes length: Int) -> OOP
   // instance enumeration
-  // func initialInstanceOf(_ classPointer: OOP) -> OOP
-  // func instanceAfter(_ objectPointer: OOP) -> OOP
+  func initialInstanceOf(_ classPointer: OOP) -> OOP
+  func instanceAfter(_ objectPointer: OOP) -> OOP
   // pointer swapping
   func swapPointersOf(_ firstPointer: OOP, and secondPointer: OOP)
   // integer access

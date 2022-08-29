@@ -350,6 +350,9 @@ class DictionaryObjectMemory : ObjectMemory {
     }
     countOf(OOPS.NilPointer, put: Word.max)
   }
+  func hasObject(_ objectPointer: OOP) -> Bool {
+    return memory[objectPointer] != nil
+  }
   func fetchPointer(_ fieldIndex: Int, ofObject objectPointer: OOP) -> OOP {
     return heapChunkOf(objectPointer, word: fieldIndex)
   }
@@ -399,6 +402,14 @@ class DictionaryObjectMemory : ObjectMemory {
     let extra = length % BytesPerWord
     let oddBytes = (extra == 0) ? 0 : (BytesPerWord - extra)
     return allocate(size, oddBytes: oddBytes, isPointers: false, forClass: classPointer)
+  }
+  func initialInstanceOf(_ classPointer: OOP) -> OOP {
+    // TODO: implement this!
+    return OOPS.NilPointer
+  }
+  func instanceAfter(_ objectPointer: OOP) -> OOP {
+    // TODO: implement this!
+    return OOPS.NilPointer
   }
   func swapPointersOf(_ firstPointer: OOP, and secondPointer: OOP) {
     let firstObject = memory[firstPointer]!.object
