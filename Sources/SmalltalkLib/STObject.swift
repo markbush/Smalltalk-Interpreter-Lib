@@ -31,6 +31,9 @@ class STObject : CustomStringConvertible {
   }
 
   func bytes() -> [UInt8] {
+    if classOop == OOPS.ClassCharacterPointer {
+      return body.map { value in UInt8((value / 2) & 0xFF) }
+    }
     if isPointers {
       return []
     }
@@ -47,7 +50,7 @@ class STObject : CustomStringConvertible {
   }
 
   func asString() -> String {
-    if isPointers {
+    if isPointers && classOop != OOPS.ClassCharacterPointer {
       return ""
     }
     if let result = String(bytes: bytes(), encoding: .utf8) {

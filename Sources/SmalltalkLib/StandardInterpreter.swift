@@ -45,6 +45,8 @@ class StandardInterpreter : Interpreter {
   // ProcessorScheduler constants
   let ProcessListsIndex = 0
   let ActiveProcessIndex = 1
+  // Character constants
+  let CharacterValueIndex = 0
 
   let memory: ObjectMemory
   var success = true
@@ -1418,8 +1420,35 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveStringAt() {
+    var character: OOP = 0
+    let index = Int(positive32BitValueOf(popStack()))
+    let array = popStack()
+    checkIndexableBoundsOf(index, in: array)
+    if success {
+      let ascii = Int(memory.integerValueOf(subscriptOf(array, with: index)))
+      character = memory.fetchPointer(ascii, ofObject: OOPS.CharacterTablePointer)
+    }
+    if success {
+      push(character)
+    } else {
+      unPop(2)
+    }
   }
   func primitiveStringAtPut() {
+    let character = popStack()
+    let index = Int(positive32BitValueOf(popStack()))
+    let array = popStack()
+    checkIndexableBoundsOf(index, in: array)
+    success(memory.fetchClassOf(character) == OOPS.ClassCharacterPointer)
+    if success {
+      let ascii = memory.fetchPointer(CharacterValueIndex, ofObject: character)
+      subscriptOf(array, with: index, storing: ascii)
+    }
+    if success {
+      push(character)
+    } else {
+      unPop(3)
+    }
   }
   func primitiveNext() {
   }

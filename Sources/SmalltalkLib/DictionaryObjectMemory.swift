@@ -30,8 +30,8 @@ class DictionaryObjectMemory : ObjectMemory {
     ByteMasks = [Word](repeating: 0, count: BytesPerWord)
     ByteShifts = [Int](repeating: 0, count: BytesPerWord)
     for i in 0 ..< ByteMasks.count {
-      ByteMasks[i] = Word(0xFF << (ByteMasks.count - i - 1))
-      ByteShifts[i] = ByteMasks.count - i - 1
+      ByteMasks[i] = Word(0xFF << ((ByteMasks.count - i - 1) * 8))
+      ByteShifts[i] = (ByteMasks.count - i - 1) * 8
     }
   }
 
@@ -348,7 +348,7 @@ class DictionaryObjectMemory : ObjectMemory {
     return sizeOf(objectPointer)
   }
   func fetchByteLengthOf(_ objectPointer: OOP) -> Int {
-    return sizeOf(objectPointer) - oddBytesOf(objectPointer)
+    return (sizeOf(objectPointer) * BytesPerWord) - oddBytesOf(objectPointer)
   }
   func instantiateClass(_ classPointer: OOP, withPointers length: Int) -> OOP {
     return allocate(length, oddBytes: 0, isPointers: true, forClass: classPointer)
