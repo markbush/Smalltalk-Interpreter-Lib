@@ -11,7 +11,7 @@ typealias SignedWord = Int32
 typealias OOP = Word
 
 class DictionaryObjectMemory : ObjectMemory {
-  static var nextOop: OOP = 32768
+  static var nextOop: OOP = 65534
   static let RootObjects = stride(from: OOPS.NilPointer, through: OOPS.ClassSymbolPointer, by: 2)
   let BytesPerWord = MemoryLayout<Word>.size
   var ByteMasks: [Word] = []
@@ -52,6 +52,13 @@ class DictionaryObjectMemory : ObjectMemory {
   }
   func loadDefaultImage() {
     loadImage("files/Smalltalk-80.image")
+  }
+  func isStringValued(_ objectPointer: OOP) -> Bool {
+    let theClass = fetchClassOf(objectPointer)
+    return (theClass == OOPS.ClassSymbolPointer) || (theClass == OOPS.ClassStringPointer)
+  }
+  func stringValueOf(_ objectPointer: OOP) -> String {
+    return memory[objectPointer]?.object.asString() ?? ""
   }
   func addObjectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, withCount count: UInt8, isPointers: Bool, isOdd: Bool, body: [UInt16]) {
     // Standard image includes size and class in size

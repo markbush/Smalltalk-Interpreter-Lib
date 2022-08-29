@@ -26,6 +26,7 @@ class StandardInterpreter : Interpreter {
   let SuperclassIndex = 0
   let MessageDictionaryIndex = 1
   let InstanceSpecificationIndex = 2
+  let ClassNameIndex = 6
   // Message dictionary constants
   let MethodArrayIndex = 1
   let SelectorStart = 2
@@ -69,6 +70,15 @@ class StandardInterpreter : Interpreter {
     activeContext = memory.fetchPointer(SuspendedContextIndex, ofObject: activeProcess)
     memory.increaseReferencesTo(activeContext)
     fetchContextRegisters()
+  }
+  func classNameFor(_ objectPointer: OOP) -> String {
+    let theClass = memory.fetchClassOf(objectPointer)
+    let namePointer = memory.fetchPointer(ClassNameIndex, ofObject: theClass)
+    if memory.isStringValued(namePointer) {
+      return memory.stringValueOf(namePointer)
+    } else {
+      return "<unknown>"
+    }
   }
 
   func fetchInteger(_ fieldIndex: Int, ofObject objectPointer: OOP) -> SignedWord {
@@ -1304,6 +1314,119 @@ class StandardInterpreter : Interpreter {
       unPop(2)
     }
   }
+  func dispatchSubscriptAndStreamPrimitives() {
+    switch primitiveIndex {
+    case 60: primitiveAt()
+    case 61: primitiveAtPut()
+    case 62: primitiveSize()
+    case 63: primitiveStringAt()
+    case 64: primitiveStringAtPut()
+    case 65: primitiveNext()
+    case 66: primitiveNextPut()
+    case 67: primitiveAtEnd()
+    default: primitiveFail()
+    }
+  }
+  func checkIndexableBoundsOf(_ index: Int, in array: OOP) {
+    let theClass = memory.fetchClassOf(array)
+    success(index >= 1)
+    let adjustedIndex = index + fixedFieldsOf(theClass)
+    success(adjustedIndex <= lengthOf(array))
+  }
+  func lengthOf(_ array: OOP) -> Int {
+    if isWords(memory.fetchClassOf(array)) {
+      return memory.fetchWordLengthOf(array)
+    } else {
+      return memory.fetchByteLengthOf(array)
+    }
+  }
+  func subscriptOf(_ array: OOP, with index: Int) -> OOP {
+    let theClass = memory.fetchClassOf(array)
+    if isWords(theClass) {
+      if isPointers(theClass) {
+        return memory.fetchPointer(index - 1, ofObject: array)
+      } else {
+        let value = memory.fetchWord(index - 1, ofObject: array)
+        return positive32BitIntegerFor(SignedWord(value))
+      }
+    } else {
+      let value = memory.fetchByte(index - 1, ofObject: array)
+      return memory.integerObjectOf(SignedWord(value))
+    }
+  }
+  func subscriptOf(_ array: OOP, with index: Int, storing value: OOP) {
+    let theClass = memory.fetchClassOf(array)
+    if isWords(theClass) {
+      if isPointers(theClass) {
+        memory.storePointer(index - 1, ofObject: array, withValue: value)
+        return
+      } else {
+        success(memory.isIntegerObject(value))
+        if success {
+          memory.storeWord(index - 1, ofObject: array, withValue: Word(positive32BitValueOf(value)))
+        }
+        return
+      }
+    } else {
+      success(memory.isIntegerObject(value))
+      if success {
+        let integerValue = memory.integerValueOf(value)
+        memory.storeByte(index - 1, ofObject: array, withValue: UInt8(integerValue & 0xFF))
+      }
+    }
+  }
+  func primitiveAt() {
+    var result: OOP = 0
+    var index = Int(positive32BitValueOf(popStack()))
+    let array = popStack()
+    let arrayClass = memory.fetchClassOf(array)
+    checkIndexableBoundsOf(index, in: array)
+    if success {
+      index += fixedFieldsOf(arrayClass)
+      result = subscriptOf(array, with: index)
+    }
+    if success {
+      push(result)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveAtPut() {
+    let value = popStack()
+    var index = Int(positive32BitValueOf(popStack()))
+    let array = popStack()
+    let arrayClass = memory.fetchClassOf(array)
+    checkIndexableBoundsOf(index, in: array)
+    if success {
+      index += fixedFieldsOf(arrayClass)
+      subscriptOf(array, with: index, storing: value)
+    }
+    if success {
+      push(value)
+    } else {
+      unPop(3)
+    }
+  }
+  func primitiveSize() {
+    let array = popStack()
+    let arrayClass = memory.fetchClassOf(array)
+    let length = positive32BitIntegerFor(SignedWord(lengthOf(array) - fixedFieldsOf(arrayClass)))
+    if success {
+      push(length)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveStringAt() {
+  }
+  func primitiveStringAtPut() {
+  }
+  func primitiveNext() {
+  }
+  func primitiveNextPut() {
+  }
+  func primitiveAtEnd() {
+  }
 
 
   func primitiveEquivalent() {
@@ -1320,8 +1443,6 @@ class StandardInterpreter : Interpreter {
   func dispatchInputOutputPrimitives() {
   }
   func dispatchStorageManagementPrimitives() {
-  }
-  func dispatchSubscriptAndStreamPrimitives() {
   }
   func dispatchSystemPrimitives() {
   }
