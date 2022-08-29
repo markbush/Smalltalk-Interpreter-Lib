@@ -1,5 +1,5 @@
 class STObject : CustomStringConvertible {
-  let BytesPerWord = MemoryLayout<Word>.size
+  static let BytesPerWord = MemoryLayout<Word>.size
   let classOop: OOP
   var body: [Word]
   // number of bytes not used in the last Word of this object
@@ -34,12 +34,12 @@ class STObject : CustomStringConvertible {
     if isPointers {
       return []
     }
-    let byteSize = (body.count * BytesPerWord) - oddBytes
+    let byteSize = (body.count * STObject.BytesPerWord) - oddBytes
     var bytes = [UInt8](repeating: 0, count: byteSize)
     for i in 0 ..< byteSize {
-      let wordNum = i / BytesPerWord
-      let byteNum = i % BytesPerWord
-      let shift = (BytesPerWord - byteNum - 1) * 8
+      let wordNum = i / STObject.BytesPerWord
+      let byteNum = i % STObject.BytesPerWord
+      let shift = (STObject.BytesPerWord - byteNum - 1) * 8
       let value = (body[wordNum] >> shift) & 0xFF
       bytes[i] = UInt8(value)
     }
@@ -54,5 +54,11 @@ class STObject : CustomStringConvertible {
       return result
     }
     return ""
+  }
+  func asFloat() -> Float {
+    if classOop != OOPS.ClassFloatPointer || body.count != 1 {
+      return 0
+    }
+    return Float(bitPattern: body[0])
   }
 }

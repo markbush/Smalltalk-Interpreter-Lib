@@ -1,3 +1,5 @@
+import Foundation
+
 class StandardInterpreter : Interpreter {
   // Method cache
   static let MethodCacheSize = 1024
@@ -35,6 +37,13 @@ class StandardInterpreter : Interpreter {
   let XIndex = 0
   let YIndex = 1
   let ClassPointSize = 2
+  // Process constants
+  let SuspendedContextIndex = 1
+  let PriorityIndex = 2
+  let MyListIndex = 3
+  // ProcessorScheduler constants
+  let ProcessListsIndex = 0
+  let ActiveProcessIndex = 1
 
   let memory: ObjectMemory
   var success = true
@@ -53,6 +62,13 @@ class StandardInterpreter : Interpreter {
 
   init(_ memory: ObjectMemory) {
     self.memory = memory
+  }
+  func initialise() {
+    let scheduler = memory.fetchPointer(ValueIndex, ofObject: OOPS.SchedulerAssociationPointer)
+    let activeProcess = memory.fetchPointer(ActiveProcessIndex, ofObject: scheduler)
+    activeContext = memory.fetchPointer(SuspendedContextIndex, ofObject: activeProcess)
+    memory.increaseReferencesTo(activeContext)
+    fetchContextRegisters()
   }
 
   func fetchInteger(_ fieldIndex: Int, ofObject objectPointer: OOP) -> SignedWord {
@@ -642,6 +658,19 @@ class StandardInterpreter : Interpreter {
   func pushInteger(_ integerValue: SignedWord) {
     push(memory.integerObjectOf(integerValue))
   }
+  func popFloat() -> Float {
+    let floatPointer = popStack()
+    success(memory.fetchClassOf(floatPointer) == OOPS.ClassFloatPointer)
+    if success {
+      return Float(bitPattern: memory.fetchWord(0, ofObject: floatPointer))
+    }
+    return 0
+  }
+  func pushFloat(_ floatValue: Float) {
+    let floatPointer = memory.instantiateClass(OOPS.ClassFloatPointer, withWords: 1)
+    memory.storeWord(0, ofObject: floatPointer, withValue: floatValue.bitPattern)
+    push(floatPointer)
+  }
   // The Blue Book requires positive16BitIntegerFor but we support 32 bit
   // SmallIntegers so a 16bit LargePositiveInteger will never be needed.
   func positive32BitIntegerFor(_ integerValue: SignedWord) -> OOP {
@@ -705,7 +734,7 @@ class StandardInterpreter : Interpreter {
     case 189: primitiveDiv()
     case 190: primitiveBitAnd()
     case 191: primitiveBitOr()
-    default: break
+    default: primitiveFail()
     }
   }
   func commonSelectorPrimitive() {
@@ -794,6 +823,7 @@ class StandardInterpreter : Interpreter {
       dispatchFloatPrimitives()
       return
     }
+    primitiveFail()
   }
   func dispatchIntegerPrimitives() {
     switch primitiveIndex {
@@ -815,7 +845,7 @@ class StandardInterpreter : Interpreter {
     case 16: primitiveBitXor()
     case 17: primitiveBitShift()
     case 18: primitiveMakePoint()
-    default: break
+    default: primitiveFail()
     }
   }
   func primitiveAdd() {
@@ -1079,5 +1109,222 @@ class StandardInterpreter : Interpreter {
   func dispatchLargeIntegerPrimitives() {
     // TODO: maybe implement these?
     primitiveFail()
+  }
+  func dispatchFloatPrimitives() {
+    switch primitiveIndex {
+    case 40: primitiveAsFloat()
+    case 41: primitiveFloatAdd()
+    case 42: primitiveFloatSubtract()
+    case 43: primitiveFloatLessThan()
+    case 44: primitiveFloatGreaterThan()
+    case 45: primitiveFloatLessOrEqual()
+    case 46: primitiveFloatGreaterOrEqual()
+    case 47: primitiveFloatEqual()
+    case 48: primitiveFloatNotEqual()
+    case 49: primitiveFloatMultiply()
+    case 50: primitiveFloatDivide()
+    case 51: primitiveTruncated()
+    case 52: primitiveFractionalPart()
+    case 53: primitiveExponent()
+    case 54: primitiveTimesTwoPower()
+    default: primitiveFail()
+    }
+  }
+  func primitiveAsFloat() {
+    let integerReceiver = popInteger()
+    if success {
+      let floatValue = Float(integerReceiver)
+      pushFloat(floatValue)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveFloatAdd() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      let floatResult = floatReceiver + floatArgument
+      pushFloat(floatResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatSubtract() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      let floatResult = floatReceiver - floatArgument
+      pushFloat(floatResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatLessThan() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver < floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatGreaterThan() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver > floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatLessOrEqual() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver <= floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatGreaterOrEqual() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver >= floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatEqual() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver == floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatNotEqual() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      if floatReceiver != floatArgument {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatMultiply() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    if success {
+      let floatResult = floatReceiver * floatArgument
+      pushFloat(floatResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveFloatDivide() {
+    let floatArgument = popFloat()
+    let floatReceiver = popFloat()
+    success(floatArgument != 0)
+    if success {
+      let floatResult = floatReceiver / floatArgument
+      pushFloat(floatResult)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitiveTruncated() {
+    var integerResult: SignedWord = 0
+    let floatReceiver = popFloat()
+    success(floatReceiver > Float(SignedWord.min) && floatReceiver < Float(SignedWord.max))
+    if success {
+      integerResult = SignedWord(floatReceiver)
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveFractionalPart() {
+    let floatReceiver = popFloat()
+    if success {
+      let floatResult = floatReceiver.truncatingRemainder(dividingBy: 1)
+      pushFloat(floatResult)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveExponent() {
+    var integerResult: SignedWord = 0
+    let floatReceiver = popFloat()
+    if success {
+      integerResult = SignedWord(floatReceiver.exponent)
+      success(memory.isIntegerValue(integerResult))
+    }
+    if success {
+      pushInteger(integerResult)
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveTimesTwoPower() {
+    let integerArgument = popInteger()
+    let floatReceiver = popFloat()
+    if success {
+      let floatResult = floatReceiver * pow(2, Float(integerArgument))
+      pushFloat(floatResult)
+    } else {
+      unPop(2)
+    }
+  }
+
+
+  func primitiveEquivalent() {
+  }
+  func primitiveClass() {
+  }
+  func primitiveBlockCopy() {
+  }
+  func primitiveValue() {
+  }
+
+  func dispatchControlPrimitives() {
+  }
+  func dispatchInputOutputPrimitives() {
+  }
+  func dispatchStorageManagementPrimitives() {
+  }
+  func dispatchSubscriptAndStreamPrimitives() {
+  }
+  func dispatchSystemPrimitives() {
+  }
+  func dispatchPrivatePrimitives() {
   }
 }

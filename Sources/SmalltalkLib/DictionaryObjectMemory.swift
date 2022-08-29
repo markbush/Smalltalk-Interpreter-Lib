@@ -12,7 +12,7 @@ typealias OOP = Word
 
 class DictionaryObjectMemory : ObjectMemory {
   static var nextOop: OOP = 32768
-  static let RootObjects = OOPS.NilPointer ... OOPS.ClassSymbolPointer
+  static let RootObjects = stride(from: OOPS.NilPointer, through: OOPS.ClassSymbolPointer, by: 2)
   let BytesPerWord = MemoryLayout<Word>.size
   var ByteMasks: [Word] = []
   var ByteShifts: [Int] = []
@@ -45,9 +45,13 @@ class DictionaryObjectMemory : ObjectMemory {
         let imageReader = Smalltalk80ImageFileReader(data)
         imageReader.loadInto(self)
       }
+      DictionaryObjectMemory.nextOop = OOP(memory.keys.max() ?? 65534) + 2
     } catch {
       fatalError("Cannot read from \(filename)")
     }
+  }
+  func loadDefaultImage() {
+    loadImage("files/Smalltalk-80.image")
   }
   func addObjectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, withCount count: UInt8, isPointers: Bool, isOdd: Bool, body: [UInt16]) {
     // Standard image includes size and class in size
@@ -57,6 +61,9 @@ class DictionaryObjectMemory : ObjectMemory {
     memory[OOP(objectPointer)] = tableEntry
   }
   func objectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, isPointers: Bool, isOdd: Bool, body: [UInt16]) -> STObject {
+    if classOop == OOPS.ClassFloatPointer {
+      return floatFromStandardImage(objectPointer, body: body)
+    }
     if classOop == OOPS.ClassCompiledMethod {
       return compiledMethodFromStandardImage(objectPointer, isOdd: isOdd, body: body)
     }
@@ -132,6 +139,15 @@ class DictionaryObjectMemory : ObjectMemory {
       let destNewValue = byte << shift
       object.body[destWordNum] = (destOldWord & ~ByteMasks[destByteNum]) | destNewValue
     }
+    return object
+  }
+  func floatFromStandardImage(_ objectPointer: UInt16, body: [UInt16]) -> STObject {
+    let object = STObject(size: 1, oddBytes: 0, isPointers: false, inClass: OOPS.ClassFloatPointer)
+    var value: Word = 0
+    if body.count == 2 {
+      value = (Word(body[1]) << 16) | Word(body[0])
+    }
+    object.body[0] = value
     return object
   }
 
@@ -237,11 +253,13 @@ class DictionaryObjectMemory : ObjectMemory {
       // Should never get here!
       forAllOtherObjectsAccessibleFrom(object.classOop, suchThat: predicate, do: action)
     }
-    for offset in 0 ... lastPointerOf(objectPointer)-1 {
+    var offset = 0
+    while offset <= lastPointerOf(objectPointer)-1 {
       let next = heapChunkOf(objectPointer, word: offset)
       if !isIntegerObject(next) && predicate(next) {
         forAllOtherObjectsAccessibleFrom(next, suchThat: predicate, do: action)
       }
+      offset += 1
     }
     action(objectPointer)
   }
@@ -275,9 +293,11 @@ class DictionaryObjectMemory : ObjectMemory {
       }
       countOf(objectPointer, put: countOf(objectPointer)-1)
       countUp(tableEntry.object.classOop)
-      for offset in 0 ... lastPointerOf(objectPointer)-1 {
+      var offset = 0
+      while offset <= lastPointerOf(objectPointer)-1 {
         let next = heapChunkOf(objectPointer, word: offset)
         countUp(next)
+        offset += 1
       }
     }
     for rootObjectPointer in DictionaryObjectMemory.RootObjects {
