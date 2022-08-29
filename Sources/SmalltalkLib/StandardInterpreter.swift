@@ -26,7 +26,6 @@ class StandardInterpreter : Interpreter {
   let SuperclassIndex = 0
   let MessageDictionaryIndex = 1
   let InstanceSpecificationIndex = 2
-  let ClassNameIndex = 6
   // Message dictionary constants
   let MethodArrayIndex = 1
   let SelectorStart = 2
@@ -47,7 +46,13 @@ class StandardInterpreter : Interpreter {
   let ActiveProcessIndex = 1
   // Character constants
   let CharacterValueIndex = 0
+  // Stream constants
+  let StreamArrayIndex = 0
+  let StreamIndexIndex = 1
+  let StreamReadLimitIndex = 2
+  let StreamWriteLimitIndex = 3
 
+  var logging = true
   let memory: ObjectMemory
   var success = true
   var activeContext: OOP = OOPS.NilPointer
@@ -72,15 +77,6 @@ class StandardInterpreter : Interpreter {
     activeContext = memory.fetchPointer(SuspendedContextIndex, ofObject: activeProcess)
     memory.increaseReferencesTo(activeContext)
     fetchContextRegisters()
-  }
-  func classNameFor(_ objectPointer: OOP) -> String {
-    let theClass = memory.fetchClassOf(objectPointer)
-    let namePointer = memory.fetchPointer(ClassNameIndex, ofObject: theClass)
-    if memory.isStringValued(namePointer) {
-      return memory.stringValueOf(namePointer)
-    } else {
-      return "<unknown>"
-    }
   }
 
   func fetchInteger(_ fieldIndex: Int, ofObject objectPointer: OOP) -> SignedWord {
@@ -588,6 +584,11 @@ class StandardInterpreter : Interpreter {
     sendSelectorToClass(memory.fetchClassOf(newReceiver))
   }
   func sendSelectorToClass(_ classPointer: OOP) {
+    if logging {
+      let className = memory.stringValueOf(classPointer)
+      let message = memory.stringValueOf(messageSelector)
+      print("[SEND] \(className) >> \(message)")
+    }
     findNewMethodInClass(classPointer)
     executeNewMethod()
   }
@@ -1451,10 +1452,78 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveNext() {
+    var result: OOP = 0
+    let stream = popStack()
+    let array = memory.fetchPointer(StreamArrayIndex, ofObject: stream)
+    let arrayClass = memory.fetchClassOf(array)
+    var index = Int(fetchInteger(StreamIndexIndex, ofObject: stream))
+    let limit = fetchInteger(StreamReadLimitIndex, ofObject: stream)
+    success(index < limit)
+    success((arrayClass == OOPS.ClassArrayPointer) || (arrayClass == OOPS.ClassStringPointer))
+    checkIndexableBoundsOf(index + 1, in: array)
+    if success {
+      index += 1
+      result = subscriptOf(array, with: index)
+    }
+    if success {
+      storeInteger(StreamIndexIndex, ofObject: stream, withValue: SignedWord(index))
+    }
+    if success {
+      if arrayClass == OOPS.ClassArrayPointer {
+        push(result)
+      } else {
+        let ascii = Int(memory.integerValueOf(result))
+        push(memory.fetchPointer(ascii, ofObject: OOPS.CharacterTablePointer))
+      }
+    } else {
+      unPop(1)
+    }
   }
   func primitiveNextPut() {
+    let value = popStack()
+    let stream = popStack()
+    let array = memory.fetchPointer(StreamArrayIndex, ofObject: stream)
+    let arrayClass = memory.fetchClassOf(array)
+    var index = Int(fetchInteger(StreamIndexIndex, ofObject: stream))
+    let limit = fetchInteger(StreamWriteLimitIndex, ofObject: stream)
+    success(index < limit)
+    success((arrayClass == OOPS.ClassArrayPointer) || (arrayClass == OOPS.ClassStringPointer))
+    checkIndexableBoundsOf(index + 1, in: array)
+    if success {
+      index += 1
+      if arrayClass == OOPS.ClassArrayPointer {
+        subscriptOf(array, with: index, storing: value)
+      } else {
+        let ascii = memory.fetchPointer(CharacterValueIndex, ofObject: value)
+        subscriptOf(array, with: index, storing: ascii)
+      }
+    }
+    if success {
+      storeInteger(StreamIndexIndex, ofObject: stream, withValue: SignedWord(index))
+    }
+    if success {
+      push(value)
+    } else {
+      unPop(2)
+    }
   }
   func primitiveAtEnd() {
+    let stream = popStack()
+    let array = memory.fetchPointer(StreamArrayIndex, ofObject: stream)
+    let arrayClass = memory.fetchClassOf(array)
+    let length = lengthOf(array)
+    let index = fetchInteger(StreamIndexIndex, ofObject: stream)
+    let limit = fetchInteger(StreamReadLimitIndex, ofObject: stream)
+    success((arrayClass == OOPS.ClassArrayPointer) || (arrayClass == OOPS.ClassStringPointer))
+    if success {
+      if (index >= limit) || (index >= length) {
+        push(OOPS.TruePointer)
+      } else {
+        push(OOPS.FalsePointer)
+      }
+    } else {
+      unPop(1)
+    }
   }
 
 

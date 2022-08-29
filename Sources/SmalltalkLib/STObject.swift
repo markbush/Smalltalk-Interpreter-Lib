@@ -50,6 +50,9 @@ class STObject : CustomStringConvertible {
   }
 
   func asString() -> String {
+    if classOop == OOPS.ClassFloatPointer {
+      return "\(asFloat())"
+    }
     if isPointers && classOop != OOPS.ClassCharacterPointer {
       return ""
     }

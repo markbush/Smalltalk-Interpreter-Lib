@@ -13,6 +13,7 @@ typealias OOP = Word
 class DictionaryObjectMemory : ObjectMemory {
   static var nextOop: OOP = 65534
   static let RootObjects = stride(from: OOPS.NilPointer, through: OOPS.ClassSymbolPointer, by: 2)
+  let ClassNameIndex = 6
   let BytesPerWord = MemoryLayout<Word>.size
   var ByteMasks: [Word] = []
   var ByteShifts: [Int] = []
@@ -53,12 +54,49 @@ class DictionaryObjectMemory : ObjectMemory {
   func loadDefaultImage() {
     loadImage("files/Smalltalk-80.image")
   }
+  func nameForClass(_ classPointer: OOP) -> String {
+    let namePointer = fetchPointer(ClassNameIndex, ofObject: classPointer)
+    if isStringValued(namePointer) {
+      return stringValueOf(namePointer)
+    } else {
+      return "<unknown>"
+    }
+  }
+  func classNameFor(_ objectPointer: OOP) -> String {
+    let classPointer = fetchClassOf(objectPointer)
+    return nameForClass(classPointer)
+  }
   func isStringValued(_ objectPointer: OOP) -> Bool {
     let theClass = fetchClassOf(objectPointer)
-    return (theClass == OOPS.ClassSymbolPointer) || (theClass == OOPS.ClassStringPointer)
+    return (theClass == OOPS.ClassSymbolPointer) || (theClass == OOPS.ClassStringPointer) || (theClass == OOPS.ClassCharacterPointer)
   }
   func stringValueOf(_ objectPointer: OOP) -> String {
-    return memory[objectPointer]?.object.asString() ?? ""
+    if isIntegerObject(objectPointer) {
+      return "\(integerValueOf(objectPointer))"
+    }
+    if fetchClassOf(objectPointer) == OOPS.ClassFloatPointer {
+      return memory[objectPointer]?.object.asString() ?? "0.0"
+    }
+    if fetchClassOf(fetchClassOf(objectPointer)) == 60 {
+      return nameForClass(objectPointer)
+    }
+    switch objectPointer {
+    case OOPS.NilPointer: return "nil"
+    case OOPS.FalsePointer: return "false"
+    case OOPS.TruePointer: return "true"
+    case OOPS.SmalltalkPointer: return "Smalltalk"
+    default:
+      if isStringValued(objectPointer) {
+        return memory[objectPointer]?.object.asString() ?? ""
+      }
+      let className = classNameFor(objectPointer)
+      if let first = className.first {
+        let vowel = ["a", "e", "i", "o", "u"].contains(first.lowercased())
+        let prefix = vowel ? "an" : "a"
+        return "\(prefix) \(className)"
+      }
+      return "<unknown>"
+    }
   }
   func addObjectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, withCount count: UInt8, isPointers: Bool, isOdd: Bool, body: [UInt16]) {
     // Standard image includes size and class in size
