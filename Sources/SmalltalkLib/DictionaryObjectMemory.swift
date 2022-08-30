@@ -20,6 +20,8 @@ class DictionaryObjectMemory : ObjectMemory {
   let MinInt = SignedWord.min / 2
   let MaxInt = SignedWord.max / 2
   var memory: [OOP:ObjectTableEntry] = [:]
+  // Cache for initialInstanceOf and instanceAfter
+  var instanceCache: [OOP:InstanceList] = [:]
 
   static func nextAvailableOop() -> OOP {
     let oop = nextOop
@@ -403,13 +405,37 @@ class DictionaryObjectMemory : ObjectMemory {
     let oddBytes = (extra == 0) ? 0 : (BytesPerWord - extra)
     return allocate(size, oddBytes: oddBytes, isPointers: false, forClass: classPointer)
   }
+  func reclaimUnusedInstanceLists() {
+    let classes = instanceCache.keys
+    let now = Date()
+    for classPointer in classes {
+      if now.timeIntervalSince(instanceCache[classPointer]!.lastAccess) > 5 {
+        instanceCache[classPointer] = nil
+      }
+    }
+  }
+  func newInstanceListForClass(_ classPointer: OOP) -> InstanceList {
+    let instanceList = InstanceList()
+    instanceList.instances = memory.filter { (oop, entry) in entry.object.classOop == classPointer }.keys.sorted()
+    return instanceList
+  }
+  func instanceListForClass(_ classPointer: OOP) -> InstanceList {
+    if let instanceList = instanceCache[classPointer] {
+      return instanceList
+    }
+    let instanceList = newInstanceListForClass(classPointer)
+    instanceCache[classPointer] = instanceList
+    return instanceList
+  }
   func initialInstanceOf(_ classPointer: OOP) -> OOP {
-    // TODO: implement this!
-    return OOPS.NilPointer
+    let instanceList = instanceListForClass(classPointer)
+    let instance = instanceList.initialInstance()
+    return instance
   }
   func instanceAfter(_ objectPointer: OOP) -> OOP {
-    // TODO: implement this!
-    return OOPS.NilPointer
+    let instanceList = instanceListForClass(fetchClassOf(objectPointer))
+    let instance = instanceList.instanceAfter(objectPointer)
+    return instance
   }
   func swapPointersOf(_ firstPointer: OOP, and secondPointer: OOP) {
     let firstObject = memory[firstPointer]!.object
