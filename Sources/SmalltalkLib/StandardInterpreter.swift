@@ -20,7 +20,7 @@ class StandardInterpreter : Interpreter {
   // BlockContext constants
   let CallerIndex = 0
   let BlockArgumentCountIndex = 3
-  let InitialPIndex = 4
+  let InitialIPIndex = 4
   let HomeIndex = 5
   // Class constants
   let SuperclassIndex = 0
@@ -44,6 +44,13 @@ class StandardInterpreter : Interpreter {
   // ProcessorScheduler constants
   let ProcessListsIndex = 0
   let ActiveProcessIndex = 1
+  // LinkedList constants
+  let FirstLinkIndex = 0
+  let LastLinkIndex = 1
+  // Semaphore constants
+  let ExcessSignalsIndex = 2
+  // Link constants
+  let NextLinkIndex = 0
   // Character constants
   let CharacterValueIndex = 0
   // Stream constants
@@ -66,6 +73,10 @@ class StandardInterpreter : Interpreter {
   var newMethod: OOP = OOPS.NilPointer
   var primitiveIndex = 0
   var currentBytecode: UInt8 = 0
+  var newProcessWaiting = false
+  var newProcess: OOP = OOPS.NilPointer
+  var semaphoreList = [Int](repeating: 0, count: 4096)
+  var semaphoreIndex = -1
   var MethodCache = [OOP](repeating: OOPS.NilPointer, count: StandardInterpreter.MethodCacheSize)
 
   init(_ memory: ObjectMemory) {
@@ -1697,19 +1708,138 @@ class StandardInterpreter : Interpreter {
     memory.storeWord(HeaderIndex, ofObject: newMethod, withValue: header)
     push(newMethod)
   }
+  func dispatchControlPrimitives() {
+    switch primitiveIndex {
+    case 80: primitiveBlockCopy()
+    case 81: primitiveValue()
+    case 82: primitiveValueWithArgs()
+    case 83: primitivePerform()
+    case 84: primitivePerformWithArgs()
+    case 85: primitiveSignal()
+    case 86: primitiveWait()
+    case 87: primitiveResume()
+    case 88: primitiveSuspend()
+    case 89: primitiveFlushCache()
+    default: primitiveFail()
+    }
+  }
+  func primitiveBlockCopy() {
+    let blockArgumentCount = popStack()
+    let context = popStack()
+    let methodContext = (isBlockContext(context)) ? memory.fetchPointer(HomeIndex, ofObject: context) : context
+    let contextSize = memory.fetchWordLengthOf(methodContext)
+    let newContext = memory.instantiateClass(OOPS.ClassBlockContextPointer, withPointers: contextSize)
+    let initialIP = memory.integerObjectOf(SignedWord(instructionPointer) + 3)
+    memory.storePointer(InitialIPIndex, ofObject: newContext, withValue: initialIP)
+    memory.storePointer(InstructionPointerIndex, ofObject: newContext, withValue: initialIP)
+    storeStackPointerValue(0, inContext: newContext)
+    memory.storePointer(BlockArgumentCountIndex, ofObject: newContext, withValue: blockArgumentCount)
+    memory.storePointer(HomeIndex, ofObject: newContext, withValue: methodContext)
+    push(newContext)
+  }
+  func primitiveValue() {
+    let blockContext = stackValue(argumentCount)
+    let blockArgumentCount = argumentCountOfBlock(blockContext)
+    success(argumentCount == blockArgumentCount)
+    if success {
+      transfer(argumentCount, fromIndex: stackPointer - argumentCount + 1, ofObject: activeContext,
+                              toIndex: TempFrameStart, ofObject: blockContext)
+      pop(argumentCount + 1)
+      let initialIP = memory.fetchPointer(InitialIPIndex, ofObject: blockContext)
+      memory.storePointer(InstructionPointerIndex, ofObject: blockContext, withValue: initialIP)
+      storeStackPointerValue(SignedWord(argumentCount), inContext: blockContext)
+      memory.storePointer(CallerIndex, ofObject: blockContext, withValue: activeContext)
+      newActiveContext(blockContext)
+    }
+  }
+  func primitiveValueWithArgs() {
+    var arrayArgumentCount = 0
+    let argumentArray = popStack()
+    let blockContext = popStack()
+    let blockArgumentCount = argumentCountOfBlock(blockContext)
+    let arrayClass = memory.fetchClassOf(argumentArray)
+    success(arrayClass == OOPS.ClassArrayPointer)
+    if success {
+      arrayArgumentCount = memory.fetchWordLengthOf(argumentArray)
+      success(arrayArgumentCount == blockArgumentCount)
+    }
+    if success {
+      transfer(arrayArgumentCount, fromIndex: 0, ofObject: argumentArray,
+                                   toIndex: TempFrameStart, ofObject: blockContext)
+      let initialIP = memory.fetchPointer(InitialIPIndex, ofObject: blockContext)
+      memory.storePointer(InstructionPointerIndex, ofObject: blockContext, withValue: initialIP)
+      storeStackPointerValue(SignedWord(arrayArgumentCount), inContext: blockContext)
+      memory.storePointer(CallerIndex, ofObject: blockContext, withValue: activeContext)
+      newActiveContext(blockContext)
+    } else {
+      unPop(2)
+    }
+  }
+  func primitivePerform() {
+    let performSelector = messageSelector
+    messageSelector = stackValue(argumentCount - 1)
+    let newReceiver = stackValue(argumentCount)
+    lookupMethodInClass(memory.fetchClassOf(newReceiver))
+    success(argumentCountOf(newMethod) == (argumentCount - 1))
+    if success {
+      let selectorIndex = stackPointer - argumentCount + 1
+      transfer(argumentCount - 1, fromIndex: selectorIndex + 1, ofObject: activeContext,
+                                  toIndex: selectorIndex, ofObject: activeContext)
+      pop(1)
+      argumentCount = argumentCount - 1
+      executeNewMethod()
+    } else {
+      messageSelector = performSelector
+    }
+  }
+  func primitivePerformWithArgs() {
+    let argumentArray = popStack()
+    let arraySize = memory.fetchWordLengthOf(argumentArray)
+    let arrayClass = memory.fetchClassOf(argumentArray)
+    success((stackPointer + arraySize) < (memory.fetchWordLengthOf(activeContext)))
+    success(arrayClass == OOPS.ClassArrayPointer)
+    if success {
+      let performSelector = messageSelector
+      messageSelector = popStack()
+      let thisReceiver = stackTop()
+      argumentCount = arraySize
+      var index = 1
+      while index <= argumentCount {
+        push(memory.fetchPointer(index - 1, ofObject: argumentArray))
+        index = index + 1
+      }
+      lookupMethodInClass(memory.fetchClassOf(thisReceiver))
+      success(argumentCountOf(newMethod) == argumentCount)
+      if success {
+        executeNewMethod()
+      } else {
+        unPop(argumentCount)
+        push(messageSelector)
+        push(argumentArray)
+        argumentCount = 2
+        messageSelector = performSelector
+      }
+    } else {
+      unPop(1)
+    }
+  }
+  func primitiveSignal() {
+  }
+  func primitiveWait() {
+  }
+  func primitiveResume() {
+  }
+  func primitiveSuspend() {
+  }
+  func primitiveFlushCache() {
+  }
 
 
   func primitiveEquivalent() {
   }
   func primitiveClass() {
   }
-  func primitiveBlockCopy() {
-  }
-  func primitiveValue() {
-  }
 
-  func dispatchControlPrimitives() {
-  }
   func dispatchInputOutputPrimitives() {
   }
   func dispatchSystemPrimitives() {
