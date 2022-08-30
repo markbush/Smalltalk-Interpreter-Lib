@@ -1,9 +1,6 @@
 import Foundation
 
 class StandardInterpreter : Interpreter {
-  // Method cache
-  static let MethodCacheSize = 1024
-
   let BytesPerWord = MemoryLayout<Word>.size
   // CompiledMethod constants
   let HeaderIndex = 0
@@ -75,17 +72,18 @@ class StandardInterpreter : Interpreter {
   var currentBytecode: UInt8 = 0
   var newProcessWaiting = false
   var newProcess: OOP = OOPS.NilPointer
-  var semaphoreList = [Int](repeating: 0, count: 4096)
+  var semaphoreList = [OOP](repeating: 0, count: 4096)
   var semaphoreIndex = -1
-  var MethodCache = [OOP](repeating: OOPS.NilPointer, count: StandardInterpreter.MethodCacheSize)
+  var methodCacheSize = 1024
+  var methodCache: [OOP] = []
 
   init(_ memory: ObjectMemory) {
     self.memory = memory
   }
   func initialise() {
-    let scheduler = memory.fetchPointer(ValueIndex, ofObject: OOPS.SchedulerAssociationPointer)
-    let activeProcess = memory.fetchPointer(ActiveProcessIndex, ofObject: scheduler)
-    activeContext = memory.fetchPointer(SuspendedContextIndex, ofObject: activeProcess)
+    initializeMethodCache()
+    semaphoreIndex = -1
+    activeContext = firstContext()
     memory.increaseReferencesTo(activeContext)
     fetchContextRegisters()
   }
@@ -351,7 +349,17 @@ class StandardInterpreter : Interpreter {
     dispatchOnThisBytecode()
   }
   func checkProcessSwitch() {
-
+    while semaphoreIndex > 0 {
+      synchronousSignal(semaphoreList[semaphoreIndex])
+      semaphoreIndex -= 1
+    }
+    if newProcessWaiting {
+      newProcessWaiting = false
+      let theActiveProcess = activeProcess()
+      memory.storePointer(SuspendedContextIndex, ofObject: theActiveProcess, withValue: activeContext)
+      memory.storePointer(ActiveProcessIndex, ofObject: schedulerPointer(), withValue: newProcess)
+      newActiveContext(memory.fetchPointer(SuspendedContextIndex, ofObject: newProcess))
+    }
   }
   func dispatchOnThisBytecode() {
     switch currentBytecode {
@@ -608,16 +616,20 @@ class StandardInterpreter : Interpreter {
   }
   func findNewMethodInClass(_ classPointer: OOP) {
     let hash = Int((messageSelector & classPointer & 0xFF) << 2)
-    if MethodCache[hash] == messageSelector && MethodCache[hash+1] == classPointer {
-      newMethod = MethodCache[hash+2]
-      primitiveIndex = Int(MethodCache[hash+3])
+    if methodCache[hash] == messageSelector && methodCache[hash+1] == classPointer {
+      newMethod = methodCache[hash+2]
+      primitiveIndex = Int(methodCache[hash+3])
     } else {
       lookupMethodInClass(classPointer)
-      MethodCache[hash] = messageSelector
-      MethodCache[hash+1] = classPointer
-      MethodCache[hash+2] = newMethod
-      MethodCache[hash+3] = Word(primitiveIndex)
+      methodCache[hash] = messageSelector
+      methodCache[hash+1] = classPointer
+      methodCache[hash+2] = newMethod
+      methodCache[hash+3] = Word(primitiveIndex)
     }
+  }
+  func initializeMethodCache() {
+    methodCacheSize = 1024
+    methodCache = [OOP](repeating: OOPS.NilPointer, count: methodCacheSize)
   }
   func executeNewMethod() {
     if !primitiveResponse() {
@@ -1823,15 +1835,117 @@ class StandardInterpreter : Interpreter {
       unPop(1)
     }
   }
+  func asynchronousSignal(_ aSemaphore: OOP) {
+    semaphoreIndex += 1
+    semaphoreList[semaphoreIndex] = aSemaphore
+  }
+  func synchronousSignal(_ aSemaphore: OOP) {
+    if isEmptyList(aSemaphore) {
+      let excessSignals = fetchInteger(ExcessSignalsIndex, ofObject: aSemaphore)
+      storeInteger(ExcessSignalsIndex, ofObject: aSemaphore, withValue: excessSignals + 1)
+    } else {
+      resume(removeFirstLinkOfList(aSemaphore))
+    }
+  }
+  func transferTo(_ aProcess: OOP) {
+    newProcessWaiting = true
+    newProcess = aProcess
+  }
+  func activeProcess() -> OOP {
+    if newProcessWaiting {
+      return newProcess
+    } else {
+      return memory.fetchPointer(ActiveProcessIndex, ofObject: schedulerPointer())
+    }
+  }
+  func schedulerPointer() -> OOP {
+    return memory.fetchPointer(ValueIndex, ofObject: OOPS.SchedulerAssociationPointer)
+  }
+  func firstContext() -> OOP {
+    newProcessWaiting = false
+    return memory.fetchPointer(SuspendedContextIndex, ofObject: activeProcess())
+  }
+  func removeFirstLinkOfList(_ aLinkedList: OOP) -> OOP {
+    let firstLink = memory.fetchPointer(FirstLinkIndex, ofObject: aLinkedList)
+    let lastLink = memory.fetchPointer(LastLinkIndex, ofObject: aLinkedList)
+    if lastLink == firstLink {
+      memory.storePointer(FirstLinkIndex, ofObject: aLinkedList, withValue: OOPS.NilPointer)
+      memory.storePointer(LastLinkIndex, ofObject: aLinkedList, withValue: OOPS.NilPointer)
+    } else {
+      let nextLink = memory.fetchPointer(NextLinkIndex, ofObject: firstLink)
+      memory.storePointer(FirstLinkIndex, ofObject: aLinkedList, withValue: nextLink)
+    }
+    memory.storePointer(NextLinkIndex, ofObject: firstLink, withValue: OOPS.NilPointer)
+    return firstLink
+  }
+  func addLastLink(_ aLink: OOP, toList aLinkedList: OOP) {
+    if isEmptyList(aLinkedList) {
+      memory.storePointer(FirstLinkIndex, ofObject: aLinkedList, withValue: aLink)
+    } else {
+      let lastLink = memory.fetchPointer(LastLinkIndex, ofObject: aLinkedList)
+      memory.storePointer(NextLinkIndex, ofObject: lastLink, withValue: aLink)
+    }
+    memory.storePointer(LastLinkIndex, ofObject: aLinkedList, withValue: aLink)
+    memory.storePointer(MyListIndex, ofObject: aLink, withValue: aLinkedList)
+  }
+  func isEmptyList(_ aLinkedList: OOP) -> Bool {
+    return memory.fetchPointer(FirstLinkIndex, ofObject: aLinkedList) == OOPS.NilPointer
+  }
+  func wakeHighestPriority() -> OOP {
+    var processList: OOP = OOPS.NilPointer
+    let processLists = memory.fetchPointer(ProcessListsIndex, ofObject: schedulerPointer())
+    var priority = memory.fetchWordLengthOf(processLists)
+    while (processList = memory.fetchPointer(priority - 1, ofObject: processLists), isEmptyList(processList)).1 {
+      priority -= 1
+    }
+    return removeFirstLinkOfList(processList)
+  }
+  func sleep(_ aProcess: OOP) {
+    let priority = Int(fetchInteger(PriorityIndex, ofObject: aProcess))
+    let processLists = memory.fetchPointer(ProcessListsIndex, ofObject: schedulerPointer())
+    let processList = memory.fetchPointer(priority - 1, ofObject: processLists)
+    addLastLink(aProcess, toList: processList)
+  }
+  func suspendActive() {
+    transferTo(wakeHighestPriority())
+  }
+  func resume(_ aProcess: OOP) {
+    let thisActiveProcess = activeProcess()
+    let activePriority = fetchInteger(PriorityIndex, ofObject: thisActiveProcess)
+    let newPriority = fetchInteger(PriorityIndex, ofObject: aProcess)
+    if newPriority > activePriority {
+      sleep(thisActiveProcess)
+      transferTo(aProcess)
+    } else {
+      sleep(aProcess)
+    }
+  }
   func primitiveSignal() {
+    synchronousSignal(stackTop())
   }
   func primitiveWait() {
+    let thisReceiver = stackTop()
+    let excessSignals = fetchInteger(ExcessSignalsIndex, ofObject: thisReceiver)
+    if excessSignals > 0 {
+      storeInteger(ExcessSignalsIndex, ofObject: thisReceiver, withValue: excessSignals - 1)
+    } else {
+      addLastLink(activeProcess(), toList: thisReceiver)
+      suspendActive()
+    }
   }
   func primitiveResume() {
+    resume(stackTop())
   }
   func primitiveSuspend() {
+    success(stackTop() == activeProcess())
+    if success {
+      popStack()
+      push(OOPS.NilPointer)
+      suspendActive()
+    }
   }
   func primitiveFlushCache() {
+    initializeMethodCache()
   }
 
 
