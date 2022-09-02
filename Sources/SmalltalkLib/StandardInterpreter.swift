@@ -1947,17 +1947,114 @@ class StandardInterpreter : Interpreter {
   func primitiveFlushCache() {
     initializeMethodCache()
   }
-
-
-  func primitiveEquivalent() {
-  }
-  func primitiveClass() {
-  }
-
   func dispatchInputOutputPrimitives() {
+    switch primitiveIndex {
+    case 90: primitiveMousePoint()
+    case 91: primitiveCursorLocPut()
+    case 92: primitiveCursorLink()
+    case 93: primitiveInputSemaphore()
+    case 94: primitiveSampleInterval()
+    case 95: primitiveInputWord()
+    case 96: primitiveCopyBits()
+    case 97: primitiveSnapshot()
+    case 98: primitiveTimeWordsInto()
+    case 99: primitiveTickWordsInto()
+    case 100: primitiveSignalAtTick()
+    case 101: primitiveBeCursor()
+    case 102: primitiveBeDisplay()
+    case 103: primitiveScanCharacters()
+    case 104: primitiveDrawLoop()
+    case 105: primitiveStringReplace()
+    default: primitiveFail()
+    }
+  }
+  func primitiveMousePoint() {
+  }
+  func primitiveCursorLocPut() {
+  }
+  func primitiveCursorLink() {
+  }
+  func primitiveInputSemaphore() {
+  }
+  func primitiveSampleInterval() {
+  }
+  func primitiveInputWord() {
+  }
+  func primitiveCopyBits() {
+  }
+  func primitiveSnapshot() {
+  }
+  func primitiveTimeWordsInto() {
+  }
+  func primitiveTickWordsInto() {
+  }
+  func primitiveSignalAtTick() {
+  }
+  func primitiveBeCursor() {
+  }
+  func primitiveBeDisplay() {
+  }
+  func primitiveScanCharacters() {
+  }
+  func primitiveDrawLoop() {
+  }
+  func primitiveStringReplace() {
   }
   func dispatchSystemPrimitives() {
+    switch primitiveIndex {
+    case 110: primitiveEquivalent()
+    case 111: primitiveClass()
+    case 112: primitiveCoreLeft()
+    case 113: primitiveQuit()
+    case 114: primitiveExitToDebugger()
+    case 115: primitiveOopsLeft()
+    case 116: primitiveSignalAtOopsLeftWordsLeft()
+    default: primitiveFail()
+    }
   }
+  func primitiveEquivalent() {
+    let otherObject = popStack()
+    let thisObject = popStack()
+    if thisObject == otherObject {
+      push(OOPS.TruePointer)
+    } else {
+      push(OOPS.FalsePointer)
+    }
+  }
+  func primitiveClass() {
+    let instance = popStack()
+    push(memory.fetchClassOf(instance))
+  }
+  func primitiveCoreLeft() {
+    pop(1)
+    // TODO: make this related to available RAM
+    push(positive32BitIntegerFor(SignedWord.max))
+  }
+  func primitiveQuit() {
+    exit(0)
+  }
+  func primitiveExitToDebugger() {
+    exit(0)
+  }
+  func primitiveOopsLeft() {
+    pop(1)
+    // TODO: make this related to available RAM
+    push(positive32BitIntegerFor(SignedWord.max))
+  }
+  func primitiveSignalAtOopsLeftWordsLeft() {
+    let numWords = positive32BitValueOf(popStack())
+    let numOops = positive32BitValueOf(popStack())
+    let semaphore = popStack()
+    success((memory.fetchClassOf(semaphore) == OOPS.ClassSemaphorePointer) || (semaphore == OOPS.NilPointer))
+    if success {
+      // TODO: save the semaphore and limits and monitor space available
+      // signalling the semaphore when space is low
+      print("Watchdog semaphore for memory below \(numOops) oops, \(numWords) words")
+    } else {
+      unPop(3)
+    }
+  }
+
   func dispatchPrivatePrimitives() {
   }
 }
