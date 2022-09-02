@@ -1969,36 +1969,202 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveMousePoint() {
+    // InputState
+    // Poll the mouse to find out its position.  Return a Point.  Fail if event-driven
+    // tracking is used instead of polling.  Optional.  See Object documentation
+    // whatIsAPrimitive.
+    // InputSensor
+    // Poll the mouse to find out its position. Return a Point. Fail if event-driven
+    // tracking is used instead of polling. Optional. See Object documentation
+    // whatIsAPrimitive.
+    // TODO
+    primitiveFail()
   }
   func primitiveCursorLocPut() {
+    // Move the cursor to the screen location specified by the argument. Fail if
+    // the argument is not a Point. Essential. See Object documentation
+    // whatIsAPrimitive.
+    let pointOrInteger = popStack()
+    let _ = popStack() // receiver
+    success((memory.fetchClassOf(pointOrInteger) == OOPS.ClassPointPointer) || (memory.isIntegerObject(pointOrInteger)))
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveCursorLink() {
+    // Cause the cursor to track the pointing device location if the argument is true.
+    // Decouple the cursor from the pointing device if the argument is false.
+    // Essential.  See Object documentation whatIsAPrimitive.
+    let trackMouse = popStack()
+    let _ = popStack() // receiver
+    success((trackMouse == OOPS.TruePointer) || (trackMouse == OOPS.FalsePointer))
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveInputSemaphore() {
+    // Install the argument (a Semaphore) as the object to be signalled whenever
+    // an input event occurs. The semaphore will be signaled once for every
+    // word placed in the input buffer by an I/O device. Fail if the argument is
+    // neither a Semaphore nor nil. Essential. See Object whatIsAPrimitive.
+    let semaphore = popStack()
+    let _ = popStack() // receiver
+    success((memory.fetchClassOf(semaphore) == OOPS.ClassSemaphorePointer) || (semaphore == OOPS.NilPointer))
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveSampleInterval() {
+    // Set the minimum time span between event driven mouse position
+    // samples.  The argument is a number of milliseconds.  Fail if the argument
+    // is not a SmallInteger.  Essential.  See Object documentation
+    // whatIsAPrimitive.
+    let _ = popInteger()
+    let _ = popStack() // receiver
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveInputWord() {
+    // Return the next word from the input buffer and remove the word from the
+    // buffer. This message should be sent just after the input semaphore
+    // finished a wait (was sent a signal by an I/O device). Fail of the input
+    // buffer is empty. Essential. See Object documentation whatIsAPrimitive.
+    let _ = popStack() // receiver
+    // TODO
   }
   func primitiveCopyBits() {
+    // Perform the movement of bits from one From to another described by the
+    // instance variables of the receiver.  Fail if any instance variables are
+    // not of the right type (Integer or Form) or if combinationRule is not
+    // between 0 and 15 inclusive.  Set the variables and try again
+    // (BitBlt|copyBitsAgain).  Essential.  See Object documentation whatIsAPrimitive.
+    let _ = popStack() // receiver
+    // TODO
   }
   func primitiveSnapshot() {
+    // Write the current state of the object memory on a file in the same format as
+    // the Smalltalk-80 release.  The file can later be resumed, returning you to
+    // this exact state.  Return normally after writing the file.  Essential.  See
+    // Object documentation whatIsAPrimitive.
+    let _ = popStack() // receiver
+    // TODO
   }
   func primitiveTimeWordsInto() {
+    // The argument is a byte indexable object of length at least four.  Store
+    // into the first four bytes of the argument the number of seconds since
+    // 00:00 in the morning of January 1, 1901 (a 32-bit unsigned number).
+    // The low-order 8-bits are stored in the byte indexed by 1 and the high-
+    // order 8-bits in the byte indexed 4.  Essential.  See Object documentation
+    // whatIsAPrimitive.
+    let arg = popStack()
+    let _ = popStack() // receiver
+    // TODO: this needs to work for arrays and LargePositiveIntegers
+    success(!isPointers(arg) && !isWords(arg))
+    if success {
+      success(memory.fetchByteLengthOf(arg) >= 4)
+    }
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveTickWordsInto() {
+    // The argument is a byte indexable object of length at least four (a
+    // LargePositiveInteger).  Store into the first four bytes of the argument the
+    // number of milliseconds since the millisecond clock was last reset or rolled
+    // over (a 32-bit unsigned number).  The low-order 8-bits are stored in
+    // the byte indexed by 1 and the high-order 8-bits in the byte indexed 4.
+    // Essential.  See Object documentation whatIsAPrimitive.
+    let arg = popStack()
+    let _ = popStack() // receiver
+    // TODO: this needs to work for arrays and LargePositiveIntegers
+    success(!isPointers(arg) && !isWords(arg))
+    if success {
+      success(memory.fetchByteLengthOf(arg) >= 4)
+    }
+    if success {
+      // TODO
+    } else {
+      unPop(2)
+    }
   }
   func primitiveSignalAtTick() {
+    // Signal the semaphore when the millisecond clock reaches the value of
+    // the second argument.  The second argument is a byte indexable object at
+    // least four bytes long (a 32-bit unsigned number with the low order
+    // 8-bits stored in the byte with the lowest index).  Fail if the first
+    // argument is neither a Semaphore nor nil.  Essential.  See Object
+    // documentation whatIsAPrimitive.
+    let milliseconds = popStack()
+    let semaphore = popStack()
+    let _ = popStack() // receiver
+    success((memory.fetchClassOf(semaphore) == OOPS.ClassSemaphorePointer) || (semaphore == OOPS.NilPointer))
+    success(!isPointers(milliseconds) && !isWords(milliseconds))
+    if success {
+      success(memory.fetchByteLengthOf(milliseconds) >= 4)
+    }
+    if success {
+      // TODO
+    } else {
+      unPop(3)
+    }
   }
   func primitiveBeCursor() {
+    // Tell the interpreter to use the receiver as the current cursor image.  Fail if the
+    // receiver does not match the size expected by the hardware.  Essential.  See
+    // Object documentation whatIsAPrimitive.
+    let _ = popStack() // receiver
+    // TODO
   }
   func primitiveBeDisplay() {
+    // Tell the interpreter to use the receiver as the current display image.  Fail if the
+    // form is too wide to fit on the physical display.  Essential.  See Object
+    // documentation whatIsAPrimitive.
+    let _ = popStack() // receiver
+    // TODO
   }
   func primitiveScanCharacters() {
+    // This is the inner loop of text display -- but consider scanCharactersFrom:to:rightX:
+    // which would get the string, stopConditions and displaying from the instance. March
+    // through source String from startIndex to stopIndex. If any character is flagged with
+    // a non-nil entry in stops, then return the corresponding value. Determine width of each
+    // character from xTable. If dextX would exceed rightX, then return stops at: 258. If
+    // displaying is true, then display the character. Advance destX by the width of the
+    // character. If stopIndex has been reached, then return stops at: 257. Fail under the
+    // same conditions that the Smalltalk code below would cause an error. Optional. See
+    // Object documentation whatIsAPrimitive.
+    // TODO
+    primitiveFail()
   }
   func primitiveDrawLoop() {
+    // This is the Bresenham plotting algorithm (IBM Systems Journal Vol
+    // 4 No. 1, 1965). It chooses a principal direction, and maintains
+    // a potential, P.  When P's sign changes, it is time to move in the
+    // minor direction as well.  Optional.  See Object documentation whatIsAPrimitive.
+    // TODO
+    primitiveFail()
   }
   func primitiveStringReplace() {
+    // String
+    // This destructively replaces elements from start to stop in the receiver
+    // starting at index, repStart, in the byte array, aByteArray.  Answer the
+    // receiver.
+    // ByteArray
+    // This destructively replaces elements from start to stop in the receiver
+    // starting at index, repStart, in the string, aString.  Answer the
+    // receiver.
+    // TODO
+    primitiveFail()
   }
   func dispatchSystemPrimitives() {
     switch primitiveIndex {
