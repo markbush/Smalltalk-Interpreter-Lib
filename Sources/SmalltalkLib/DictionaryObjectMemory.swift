@@ -53,9 +53,6 @@ class DictionaryObjectMemory : ObjectMemory {
       fatalError("Cannot read from \(filename)")
     }
   }
-  func loadDefaultImage() {
-    loadImage("files/Smalltalk-80.image")
-  }
   func nameForClass(_ classPointer: OOP) -> String {
     let namePointer = fetchPointer(ClassNameIndex, ofObject: classPointer)
     if isStringValued(namePointer) {

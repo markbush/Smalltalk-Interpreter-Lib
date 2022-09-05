@@ -55,9 +55,18 @@ class StandardInterpreter : Interpreter {
   let StreamIndexIndex = 1
   let StreamReadLimitIndex = 2
   let StreamWriteLimitIndex = 3
+  // File constants
+  let FileNameIndex = 1
+  let DescriptorIndex = 8
+  // FilePage constants
+  let PageInPageIndex = 1
+  let PageNumberIndex = 3
+  let BytesInPageIndex = 4
+  let PageSize: UInt64 = 512
 
   var logging = true
   let memory: ObjectMemory
+  let filesystem: FileSystem
   var success = true
   var activeContext: OOP = OOPS.NilPointer
   var homeContext: OOP = OOPS.NilPointer
@@ -76,11 +85,23 @@ class StandardInterpreter : Interpreter {
   var semaphoreIndex = -1
   var methodCacheSize = 1024
   var methodCache: [OOP] = []
+  var snapshotImageName = "files/Smalltalk-80.image"
+  var currentFilePage: OOP = OOPS.NilPointer
+  var currentOldFile: OOP = OOPS.NilPointer
+  var currentFileName: OOP = OOPS.NilPointer
+  var currentFileCode: SignedWord = 0
+  var currentFile: OOP = OOPS.NilPointer
 
   init(_ memory: ObjectMemory) {
     self.memory = memory
+    self.filesystem = FileSystem()
+  }
+  init() {
+    self.memory = DictionaryObjectMemory()
+    self.filesystem = FileSystem()
   }
   func initialise() {
+    memory.loadImage(snapshotImageName)
     initializeMethodCache()
     semaphoreIndex = -1
     activeContext = firstContext()
@@ -709,6 +730,17 @@ class StandardInterpreter : Interpreter {
     let floatPointer = memory.instantiateClass(OOPS.ClassFloatPointer, withWords: 1)
     memory.storeWord(0, ofObject: floatPointer, withValue: floatValue.bitPattern)
     push(floatPointer)
+  }
+  func stringPointerFor(_ stringValue: String) -> OOP {
+    let stringPointer = memory.instantiateClass(OOPS.ClassStringPointer, withBytes: stringValue.count)
+    let stringArray = Array(stringValue)
+    for i in 0 ..< stringArray.count {
+      memory.storeByte(i, ofObject: stringPointer, withValue: stringArray[i].asciiValue!)
+    }
+    return stringPointer
+  }
+  func pushString(_ stringValue: String) {
+    push(stringPointerFor(stringValue))
   }
   // The Blue Book requires positive16BitIntegerFor but we support 32 bit
   // SmallIntegers so a 16bit LargePositiveInteger will never be needed.
@@ -2192,7 +2224,7 @@ class StandardInterpreter : Interpreter {
     push(memory.fetchClassOf(instance))
   }
   func primitiveCoreLeft() {
-    pop(1)
+    pop(1) // receiver
     // TODO: make this related to available RAM
     push(positive32BitIntegerFor(SignedWord.max))
   }
@@ -2203,7 +2235,7 @@ class StandardInterpreter : Interpreter {
     exit(0)
   }
   func primitiveOopsLeft() {
-    pop(1)
+    pop(1) // receiver
     // TODO: make this related to available RAM
     push(positive32BitIntegerFor(SignedWord.max))
   }
@@ -2222,5 +2254,281 @@ class StandardInterpreter : Interpreter {
   }
 
   func dispatchPrivatePrimitives() {
+    switch primitiveIndex {
+    case 128: primitiveBeSnapshotFile()
+    case 130: primitivePosixFileOperation()
+    case 131: primitivePosixDirectoryOperation()
+    case 132: primitivePosixLastErrorOperation()
+    case 133: primitivePosixErrorStringOperation()
+    default: primitiveFail()
+    }
+  }
+  func primitiveBeSnapshotFile() {
+    let fileObjectPointer = popStack()
+    let fileNamePointer = memory.fetchPointer(FileNameIndex, ofObject: fileObjectPointer)
+    success(memory.isStringValued(fileNamePointer))
+    if success {
+      snapshotImageName = memory.stringValueOf(fileNamePointer)
+      if logging {
+        print("Set snapshot image file to: \(snapshotImageName)")
+      }
+    } else {
+      unPop(1)
+    }
+  }
+  func primitivePosixFileOperation() {
+    var result = OOPS.NilPointer
+    currentFilePage = popStack()
+    currentFileName = popStack()
+    currentFileCode = popInteger()
+    currentFile = popStack()
+
+    success((currentFileCode >= 0) && (currentFileCode <= 6))
+    success(currentFile != OOPS.NilPointer)
+    if success {
+      result = primitiveDoFileOperation()
+    }
+    if success {
+      push(result)
+    } else {
+      unPop(4)
+    }
+  }
+  func primitiveDoFileOperation() -> OOP {
+    switch currentFileCode {
+    case 0: return primitiveFileReadPage()
+    case 1: return primitiveFileWritePage()
+    case 2: return primitiveFileTruncatePage()
+    case 3: return primitiveFileSize()
+    case 4: return primitiveFileOpen()
+    case 5: return primitiveFileClose()
+    default:
+      primitiveFail()
+      return OOPS.NilPointer
+    }
+  }
+  func primitiveFileReadPage() -> OOP {
+    var fd: Int32 = 0
+    let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentFile)
+    success(fileDescriptorObject != OOPS.NilPointer)
+    success(currentFilePage != OOPS.NilPointer)
+    if success {
+      fd = Int32(positive32BitValueOf(fileDescriptorObject))
+    }
+    if success {
+      let pageNumber = UInt64(fetchInteger(PageNumberIndex, ofObject: currentFilePage))
+      let byteArray = memory.fetchPointer(PageInPageIndex, ofObject: currentFilePage)
+      let position = (pageNumber - 1) * PageSize
+      if !filesystem.seek(fd, to: position) {
+        return OOPS.FalsePointer
+      }
+      if let data = filesystem.read(fd, upToCount: Int(PageSize)) {
+        for i in 0 ..< data.count {
+          memory.storeByte(i, ofObject: byteArray, withValue: data[i])
+        }
+        storeInteger(BytesInPageIndex, ofObject: currentFilePage, withValue: SignedWord(data.count))
+        return OOPS.TruePointer
+      }
+    }
+    return OOPS.FalsePointer
+  }
+  func primitiveFileWritePage() -> OOP {
+    var fd: Int32 = 0
+    let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentFile)
+    success(fileDescriptorObject != OOPS.NilPointer)
+    success(currentFilePage != OOPS.NilPointer)
+    if success {
+      fd = Int32(positive32BitValueOf(fileDescriptorObject))
+    }
+    if success {
+      let pageNumber = UInt64(fetchInteger(PageNumberIndex, ofObject: currentFilePage))
+      let byteArray = memory.fetchPointer(PageInPageIndex, ofObject: currentFilePage)
+      let position = (pageNumber - 1) * PageSize
+      if !filesystem.seek(fd, to: position) {
+        return OOPS.FalsePointer
+      }
+      let bytesInPage = Int(fetchInteger(BytesInPageIndex, ofObject: currentFilePage))
+      var pageBuffer = [Byte](repeating: 0, count: bytesInPage)
+      for i in 0 ..< bytesInPage {
+        let byte = memory.fetchByte(i, ofObject: byteArray)
+        pageBuffer[i] = byte
+      }
+      if filesystem.write(fd, from: pageBuffer) {
+        return OOPS.TruePointer
+      }
+    }
+    return OOPS.FalsePointer
+  }
+  func primitiveFileTruncatePage() -> OOP {
+    var fd: Int32 = 0
+    let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentFile)
+    success(fileDescriptorObject != OOPS.NilPointer)
+    if success {
+      fd = Int32(positive32BitValueOf(fileDescriptorObject))
+    }
+    if success {
+      var newSize: UInt64 = 0
+      if currentFilePage != OOPS.NilPointer {
+        let pageNumber = UInt64(fetchInteger(PageNumberIndex, ofObject: currentFilePage))
+        let bytesInPage = UInt64(fetchInteger(BytesInPageIndex, ofObject: currentFilePage))
+        newSize = (pageNumber - 1) * PageSize + bytesInPage
+      }
+      return filesystem.truncate(fd, to: newSize) ? OOPS.TruePointer : OOPS.FalsePointer
+    }
+    return OOPS.FalsePointer
+  }
+  func primitiveFileSize() -> OOP {
+    var fd: Int32 = 0
+    let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentFile)
+    success(fileDescriptorObject != OOPS.NilPointer)
+    if success {
+      fd = Int32(positive32BitValueOf(fileDescriptorObject))
+    }
+    if success {
+      if let size = filesystem.fileSize(fd) {
+        return positive32BitIntegerFor(SignedWord(size))
+      }
+    }
+    return OOPS.NilPointer
+  }
+  func primitiveFileOpen() -> OOP {
+    success(memory.fetchClassOf(currentFileName) == OOPS.ClassStringPointer)
+    if success {
+      let filePath = memory.stringValueOf(currentFileName)
+      let fd = filesystem.openFile(filePath)
+      if fd != -1 {
+        let fileDescriptorObject = positive32BitIntegerFor(fd)
+        memory.storePointer(DescriptorIndex, ofObject: currentFile, withValue: fileDescriptorObject)
+        return OOPS.TruePointer
+      }
+      return OOPS.FalsePointer
+    }
+    return OOPS.NilPointer
+  }
+  func primitiveFileClose() -> OOP {
+    var fd: Int32 = 0
+    let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentFile)
+    success(fileDescriptorObject != OOPS.NilPointer)
+    if success {
+      fd = Int32(positive32BitValueOf(fileDescriptorObject))
+    }
+    if success {
+      let result = filesystem.closeFile(fd)
+      memory.storePointer(DescriptorIndex, ofObject: currentFile, withValue: OOPS.NilPointer)
+      if result == -1 {
+        return OOPS.FalsePointer
+      } else {
+        return OOPS.TruePointer
+      }
+    }
+    return OOPS.NilPointer
+  }
+  func primitivePosixDirectoryOperation() {
+    var result = OOPS.NilPointer
+    currentOldFile = popStack()
+    currentFileName = popStack()
+    currentFileCode = popInteger()
+    pop(1) // receiver
+
+    success((currentFileCode >= 0) && (currentFileCode <= 3))
+    success((currentFileName == OOPS.NilPointer) || (memory.fetchClassOf(currentFileName) == OOPS.ClassStringPointer))
+    if success {
+      result = primitiveDoFileDirectoryOperation()
+    }
+    if success {
+      push(result)
+    } else {
+      unPop(4)
+    }
+  }
+  func primitiveDoFileDirectoryOperation() -> OOP {
+    switch currentFileCode {
+    case 0: return primitiveFileCreate()
+    case 1: return primitiveFileDelete()
+    case 2: return primitiveFileRename()
+    case 3: return primitiveFileEnumerate()
+    default:
+      primitiveFail()
+      return OOPS.NilPointer
+    }
+  }
+  func primitiveFileCreate() -> OOP {
+    success(currentFileName != OOPS.NilPointer)
+    if success {
+      let filePath = memory.stringValueOf(currentFileName)
+      let fd = filesystem.createFile(filePath)
+      if fd != -1 {
+        return positive32BitIntegerFor(fd)
+      }
+    }
+    return OOPS.NilPointer
+  }
+  func primitiveFileDelete() -> OOP {
+    success(currentFileName != OOPS.NilPointer)
+    if success {
+      let filePath = memory.stringValueOf(currentFileName)
+      return filesystem.deleteFile(filePath) ? OOPS.TruePointer : OOPS.FalsePointer
+    }
+    return OOPS.NilPointer
+  }
+  func primitiveFileRename() -> OOP {
+    var position: UInt64 = 0
+    var wasOpen = false
+    success(currentFileName != OOPS.NilPointer)
+    success(currentOldFile != OOPS.NilPointer)
+    if success {
+      let fileDescriptorObject = memory.fetchPointer(DescriptorIndex, ofObject: currentOldFile)
+      if fileDescriptorObject != OOPS.NilPointer {
+        wasOpen = true
+        let fd = Int32(positive32BitValueOf(fileDescriptorObject))
+        position = filesystem.tell(fd)
+        filesystem.closeFile(fd)
+      }
+    }
+    if success {
+      let newFilePath = memory.stringValueOf(currentFileName)
+      let oldFileName = memory.fetchPointer(FileNameIndex, ofObject: currentOldFile)
+      let oldFilePath = memory.stringValueOf(oldFileName)
+      let didRename = filesystem.renameFile(oldFilePath, to: newFilePath)
+      if wasOpen {
+        let filePath = didRename ? newFilePath : oldFilePath
+        let fd = filesystem.openFile(filePath)
+        if fd != -1 {
+          let fileDescriptorObject = positive32BitIntegerFor(fd)
+          memory.storePointer(DescriptorIndex, ofObject: currentOldFile, withValue: fileDescriptorObject)
+          filesystem.seek(fd, to: position)
+        } else {
+          memory.storePointer(DescriptorIndex, ofObject: currentOldFile, withValue: OOPS.NilPointer)
+        }
+      }
+      if didRename {
+        memory.storePointer(FileNameIndex, ofObject: currentOldFile, withValue: currentFileName)
+        return OOPS.TruePointer
+      } else {
+        return OOPS.FalsePointer
+      }
+    }
+    return OOPS.NilPointer
+  }
+  func primitiveFileEnumerate() -> OOP {
+    let files = filesystem.fileNames()
+    let array = memory.instantiateClass(OOPS.ClassArrayPointer, withPointers: files.count)
+    for i in 0 ..< files.count {
+      memory.storePointer(i, ofObject: array, withValue: stringPointerFor(files[i]))
+    }
+    return array
+  }
+  func primitivePosixLastErrorOperation() {
+    pop(1) // receiver
+    pushInteger(filesystem.lastError)
+  }
+  func primitivePosixErrorStringOperation() {
+    let code = popInteger()
+    pop(1) // receiver
+    if success {
+      pushString(filesystem.errorText(code))
+    } else {
+      unPop(2)
+    }
   }
 }
