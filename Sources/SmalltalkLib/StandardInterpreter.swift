@@ -67,6 +67,7 @@ class StandardInterpreter : Interpreter {
   var logging = true
   let memory: ObjectMemory
   let filesystem: FileSystem
+  let startupDate = Date()
   var success = true
   var activeContext: OOP = OOPS.NilPointer
   var homeContext: OOP = OOPS.NilPointer
@@ -447,6 +448,11 @@ class StandardInterpreter : Interpreter {
       cycle()
     }
   }
+  func interpret(_ n: Int) {
+    for _ in 0 ..< n {
+      cycle()
+    }
+  }
   func cycle() {
     checkProcessSwitch()
     currentBytecode = fetchByte()
@@ -744,7 +750,6 @@ class StandardInterpreter : Interpreter {
     }
   }
   func activateNewMethod() {
-    // Always large contexts
     let contextSize = (largeContextFlagOf(newMethod) == 1) ? 32 + TempFrameStart : 12 + TempFrameStart
     let newContext = memory.instantiateClass(OOPS.ClassMethodContextPointer, withPointers: contextSize)
     memory.storePointer(SenderIndex, ofObject: newContext, withValue: activeContext)
@@ -2184,14 +2189,21 @@ class StandardInterpreter : Interpreter {
     // order 8-bits in the byte indexed 4.  Essential.  See Object documentation
     // whatIsAPrimitive.
     let arg = popStack()
+    let argClass = memory.fetchClassOf(arg)
     let _ = popStack() // receiver
     // TODO: this needs to work for arrays and LargePositiveIntegers
-    success(!isPointers(arg) && !isWords(arg))
+    success(!isPointers(argClass) && !isWords(argClass))
     if success {
       success(memory.fetchByteLengthOf(arg) >= 4)
     }
     if success {
-      // TODO
+      let now = Date()
+      let timeSinceReference = UInt32(now.timeIntervalSinceReferenceDate)
+      let timeSinceSmalltalkEpoch = timeSinceReference + 3155760000
+      memory.storeByte(0, ofObject: arg, withValue: UInt8(timeSinceSmalltalkEpoch & 0xff))
+      memory.storeByte(1, ofObject: arg, withValue: UInt8((timeSinceSmalltalkEpoch >> 8) & 0xff))
+      memory.storeByte(2, ofObject: arg, withValue: UInt8((timeSinceSmalltalkEpoch >> 16) & 0xff))
+      memory.storeByte(3, ofObject: arg, withValue: UInt8((timeSinceSmalltalkEpoch >> 24) & 0xff))
     } else {
       unPop(2)
     }
@@ -2204,14 +2216,21 @@ class StandardInterpreter : Interpreter {
     // the byte indexed by 1 and the high-order 8-bits in the byte indexed 4.
     // Essential.  See Object documentation whatIsAPrimitive.
     let arg = popStack()
+    let argClass = memory.fetchClassOf(arg)
     let _ = popStack() // receiver
     // TODO: this needs to work for arrays and LargePositiveIntegers
-    success(!isPointers(arg) && !isWords(arg))
+    success(!isPointers(argClass) && !isWords(argClass))
     if success {
       success(memory.fetchByteLengthOf(arg) >= 4)
     }
     if success {
-      // TODO
+      let now = Date()
+      let secondsSinceReset = now.timeIntervalSince(startupDate)
+      let millisecondsSinceReset = UInt32(secondsSinceReset * 1000)
+      memory.storeByte(0, ofObject: arg, withValue: UInt8(millisecondsSinceReset & 0xff))
+      memory.storeByte(1, ofObject: arg, withValue: UInt8((millisecondsSinceReset >> 8) & 0xff))
+      memory.storeByte(2, ofObject: arg, withValue: UInt8((millisecondsSinceReset >> 16) & 0xff))
+      memory.storeByte(3, ofObject: arg, withValue: UInt8((millisecondsSinceReset >> 24) & 0xff))
     } else {
       unPop(2)
     }
@@ -2224,10 +2243,11 @@ class StandardInterpreter : Interpreter {
     // argument is neither a Semaphore nor nil.  Essential.  See Object
     // documentation whatIsAPrimitive.
     let milliseconds = popStack()
+    let millisecondsClass = memory.fetchClassOf(milliseconds)
     let semaphore = popStack()
     let _ = popStack() // receiver
     success((memory.fetchClassOf(semaphore) == OOPS.ClassSemaphorePointer) || (semaphore == OOPS.NilPointer))
-    success(!isPointers(milliseconds) && !isWords(milliseconds))
+    success(!isPointers(millisecondsClass) && !isWords(millisecondsClass))
     if success {
       success(memory.fetchByteLengthOf(milliseconds) >= 4)
     }
