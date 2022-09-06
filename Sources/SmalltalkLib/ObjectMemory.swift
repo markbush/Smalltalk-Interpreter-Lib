@@ -34,6 +34,8 @@ protocol ObjectMemory {
   // direct loading of objects
   func loadImage(_ filename: String)
   func addObjectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, withCount count: UInt8, isPointers: Bool, isOdd: Bool, body: [UInt16])
+  // Garbage collecting
+  func reclaimInaccessibleObjects()
   // Extra
   func isStringValued(_ objectPointer: OOP) -> Bool
   func stringValueOf(_ objectPointer: OOP) -> String

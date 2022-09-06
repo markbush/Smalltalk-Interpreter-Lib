@@ -47,8 +47,10 @@ class DictionaryObjectMemory : ObjectMemory {
       if (standardImage) {
         let imageReader = Smalltalk80ImageFileReader(data)
         imageReader.loadInto(self)
+        fixInstructionPointersFromStandardImage()
       }
       DictionaryObjectMemory.nextOop = OOP(memory.keys.max() ?? 65534) + 2
+      countOf(OOPS.NilPointer, put: Word.max - 1)
     } catch {
       fatalError("Cannot read from \(filename)")
     }
@@ -194,6 +196,62 @@ class DictionaryObjectMemory : ObjectMemory {
     object.body[0] = value
     return object
   }
+  func isMethodContext(_ object: STObject) -> Bool {
+    return object.classOop == OOPS.ClassMethodContextPointer
+  }
+  func isBlockContext(_ object: STObject) -> Bool {
+    return object.classOop == OOPS.ClassBlockContextPointer
+  }
+  func isContext(_ object: STObject) -> Bool {
+    return isMethodContext(object) || isBlockContext(object)
+  }
+  func fixInstructionPointersFromStandardImage() {
+    // Instruction pointers are set assuming that literals will be 2 bytes.
+    // Literals are now BytesPerWord long.
+    // For each MethodContext:
+    //   get the number of literals from the method
+    //   add the literal offset (1)
+    //   multiply by (BytesPerWord - 2)
+    //   increase instruction pointer by the result
+    // For each BlockContext
+    //   get the number of literals from the method
+    //   add the literal offset (1)
+    //   multiply by (BytesPerWord - 2)
+    //   increase instruction pointer and initial instruction pointer by the result
+    let contexts = memory.filter { (oop, entry) in isContext(entry.object) }
+    contexts.forEach { (oop, entry) in fixInstructionPointerIn(entry.object) }
+  }
+  func methodPointerFor(_ context: STObject) -> OOP? {
+    if isMethodContext(context) {
+      return context.body[3]
+    }
+    let homeObjectPointer = context.body[5]
+    if let homeContextEntry = memory[homeObjectPointer] {
+      return methodPointerFor(homeContextEntry.object)
+    }
+    return nil
+  }
+  func fixInstructionPointerIn(_ context: STObject) {
+    guard let methodPointer = methodPointerFor(context) else {
+      print("Error: no method for context: \(context)")
+      return
+    }
+    guard let methodEntry = memory[methodPointer] else {
+      print("Error: no method object for method OOP \(methodPointer) in context: \(context)")
+      return
+    }
+    let header = methodEntry.object.body[0]
+    let numLiterals = Int((header & 0x7E) >> 1)
+    let literalOffset = numLiterals + 1
+    let ipOffset = SignedWord(literalOffset * (BytesPerWord - 2))
+    let oldIP = integerValueOf(context.body[1])
+    let ip = oldIP + ipOffset
+    context.body[1] = integerObjectOf(ip)
+    if isBlockContext(context) {
+      let initialIP = integerValueOf(context.body[4]) + ipOffset
+      context.body[4] = integerObjectOf(initialIP)
+    }
+  }
 
   func cantBeIntegerObject(_ objectPointer: OOP) throws {
     if isIntegerObject(objectPointer) {
@@ -271,7 +329,10 @@ class DictionaryObjectMemory : ObjectMemory {
       // integer objects have special encoding
       return
     }
-    countOf(objectPointer, put: countOf(objectPointer)+1)
+    let count = countOf(objectPointer) + 1
+    if count < Word.max {
+      countOf(objectPointer, put: count)
+    }
   }
   func countDown(_ rootObjectPointer: OOP) {
     if isIntegerObject(rootObjectPointer) {
@@ -279,7 +340,7 @@ class DictionaryObjectMemory : ObjectMemory {
       return
     }
     forAllObjectsAccessibleFrom(rootObjectPointer,
-      suchThat: { oop in let count = countOf(oop)-1 ; countOf(oop, put: count) ; return count == 0 },
+      suchThat: { oop in let count = countOf(oop)-1 ; if count < (Word.max - 2) { countOf(oop, put: count) }; return count == 0 },
       do: { oop in countOf(oop, put: 0) ; deallocate(oop) })
   }
   func forAllObjectsAccessibleFrom(_ objectPointer: OOP, suchThat predicate: (OOP)->Bool, do action: (OOP)->Void) {
@@ -347,7 +408,7 @@ class DictionaryObjectMemory : ObjectMemory {
     for rootObjectPointer in DictionaryObjectMemory.RootObjects {
       countUp(rootObjectPointer)
     }
-    countOf(OOPS.NilPointer, put: Word.max)
+    countOf(OOPS.NilPointer, put: Word.max - 1)
   }
   func hasObject(_ objectPointer: OOP) -> Bool {
     return memory[objectPointer] != nil

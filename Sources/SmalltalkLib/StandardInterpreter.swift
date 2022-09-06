@@ -81,7 +81,8 @@ class StandardInterpreter : Interpreter {
   var currentBytecode: UInt8 = 0
   var newProcessWaiting = false
   var newProcess: OOP = OOPS.NilPointer
-  var semaphoreList = [OOP](repeating: 0, count: 4096)
+  var semaphoreListSize = 4096
+  var semaphoreList: [OOP] = []
   var semaphoreIndex = -1
   var methodCacheSize = 1024
   var methodCache: [OOP] = []
@@ -103,12 +104,90 @@ class StandardInterpreter : Interpreter {
   func initialise() {
     memory.loadImage(snapshotImageName)
     initializeMethodCache()
-    semaphoreIndex = -1
+    initialiseSemaphoreList()
     activeContext = firstContext()
     memory.increaseReferencesTo(activeContext)
     fetchContextRegisters()
   }
 
+  func initialiseSemaphoreList() {
+    semaphoreListSize = 4096
+    semaphoreList = [OOP](repeating: 0, count: 4096)
+    semaphoreIndex = -1
+  }
+  func logBytecodes() {
+    let numLiterals = literalCountOf(method)
+    let bytecodeOffset = BytesPerWord * (LiteralStart + numLiterals)
+    let numBytecodes = memory.fetchByteLengthOf(method) - bytecodeOffset
+    if numBytecodes > 0 {
+      var bytecodes = [String](repeating: "", count: numBytecodes)
+      let ip = instructionPointer - bytecodeOffset
+      for i in 0 ..< numBytecodes {
+        let bytecode = String(format: "%02x", memory.fetchByte(bytecodeOffset + i, ofObject: method))
+        if i == ip {
+          bytecodes[i] = "<\(bytecode)>"
+        } else {
+          bytecodes[i] = " \(bytecode) "
+        }
+      }
+      print("Bytecodes:")
+      let displaySize = 16
+      stride(from: 0, to: bytecodes.count, by: displaySize).forEach {
+        print(bytecodes[$0 ..< min($0 + displaySize, bytecodes.count)].joined())
+      }
+    }
+  }
+  func logMethod() {
+    let numLiterals = literalCountOf(method)
+    let receiverDescription = memory.stringValueOf(receiver)
+    print("Receiver: \(receiver) [\(receiverDescription)]")
+    let selectorDescription = memory.stringValueOf(messageSelector)
+    print("Selector: \(messageSelector) [\(selectorDescription)]")
+    print("Header: \(headerOf(method)) [\(String(headerOf(method), radix: 16))]")
+    print("Num args: \(argumentCount)")
+    print("Primitive: \(primitiveIndex)")
+    if numLiterals > 0 {
+      print("Literals:")
+      for i in 0 ..< numLiterals {
+        let literal = literal(i, ofMethod: method)
+        let literalDescription = memory.stringValueOf(literal)
+        let literalString = String(format: "  [%2d] %5d [%@]", i, literal, literalDescription)
+        print(literalString)
+      }
+    }
+    logBytecodes()
+  }
+  func logStack() {
+    let stackSize = memory.fetchWordLengthOf(activeContext)
+    print("Stack:")
+    for i in (TempFrameStart - 1) ..< stackSize {
+      let n = i - TempFrameStart + 1
+      let element = memory.fetchPointer(i, ofObject: activeContext)
+      let description = memory.stringValueOf(element)
+      let entry = String(format: "[%2d] %5d [%@]", n, element, description)
+      if i == stackPointer {
+        print("TOP => \(entry)")
+      } else {
+        print("       \(entry)")
+      }
+    }
+  }
+  func logContext() {
+    print("Sender: \(sender()) (\(memory.stringValueOf(sender())))")
+    let receiverDescription = memory.stringValueOf(receiver)
+    print("Receiver: \(receiver) [\(receiverDescription)]")
+    let numLiterals = literalCountOf(method)
+    let bytecodeOffset = BytesPerWord * (LiteralStart + numLiterals)
+    let ip = instructionPointer - bytecodeOffset
+    print("IP: \(instructionPointer) [\(ip)]")
+    let sp = stackPointer - TempFrameStart + 1
+    print("SP: \(stackPointer) (\(sp))")
+    logStack()
+  }
+  func logMethodStatus() {
+    logBytecodes()
+    logStack()
+  }
   func fetchInteger(_ fieldIndex: Int, ofObject objectPointer: OOP) -> SignedWord {
     let integerPointer = memory.fetchPointer(fieldIndex, ofObject: objectPointer)
     if memory.isIntegerObject(integerPointer) {
@@ -221,6 +300,10 @@ class StandardInterpreter : Interpreter {
     method = memory.fetchPointer(MethodIndex, ofObject: homeContext)
     instructionPointer = Int(instructionPointerOfContext(activeContext)) - 1
     stackPointer = Int(stackPointerOfContext(activeContext)) + TempFrameStart - 1
+    if logging {
+      logMethod()
+      logContext()
+    }
   }
   func isBlockContext(_ contextPointer: OOP) -> Bool {
     let methodOrArguments = memory.fetchPointer(MethodIndex, ofObject: contextPointer)
@@ -368,6 +451,9 @@ class StandardInterpreter : Interpreter {
     checkProcessSwitch()
     currentBytecode = fetchByte()
     dispatchOnThisBytecode()
+    if logging {
+      logMethodStatus()
+    }
   }
   func checkProcessSwitch() {
     while semaphoreIndex > 0 {
