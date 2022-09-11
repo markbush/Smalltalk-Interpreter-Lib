@@ -84,6 +84,57 @@ class LargeInteger : CustomStringConvertible {
       return digitAdd(arg)
     }
   }
+  func lessThan(_ arg: LargeInteger) -> Bool {
+    if negative == arg.negative {
+      if negative {
+        return digitCompareTo(arg) > 0
+      } else {
+        return digitCompareTo(arg) < 0
+      }
+    } else {
+      return negative
+    }
+  }
+  func lessThanOrEqual(_ arg: LargeInteger) -> Bool {
+    if negative == arg.negative {
+      if negative {
+        return digitCompareTo(arg) >= 0
+      } else {
+        return digitCompareTo(arg) <= 0
+      }
+    } else {
+      return negative
+    }
+  }
+  func greaterThan(_ arg: LargeInteger) -> Bool {
+    if negative == arg.negative {
+      if negative {
+        return digitCompareTo(arg) < 0
+      } else {
+        return digitCompareTo(arg) > 0
+      }
+    } else {
+      return arg.negative
+    }
+  }
+  func greaterThanOrEqual(_ arg: LargeInteger) -> Bool {
+    if negative == arg.negative {
+      if negative {
+        return digitCompareTo(arg) <= 0
+      } else {
+        return digitCompareTo(arg) >= 0
+      }
+    } else {
+      return arg.negative
+    }
+  }
+  func equals(_ arg: LargeInteger) -> Bool {
+    if negative == arg.negative {
+      return digitCompareTo(arg) == 0
+    } else {
+      return false
+    }
+  }
   func digitAdd(_ arg: LargeInteger) -> LargeInteger {
     var accum = 0
     let len = max(bytes.count, arg.bytes.count)
@@ -141,5 +192,21 @@ class LargeInteger : CustomStringConvertible {
     }
     sum.truncate()
     return sum
+  }
+  func digitCompareTo(_ arg: LargeInteger) -> Int {
+    var len = bytes.count
+    let argLen = arg.bytes.count
+    if argLen != len {
+      return (argLen > len) ? -1 : 1
+    }
+    while len > 0 {
+      let t5 = arg.digitAt(len)
+      let t6 = digitAt(len)
+      if t5 != t6 {
+        return (t5 < t6) ? 1 : -1
+      }
+      len -= 1
+    }
+    return 0
   }
 }
