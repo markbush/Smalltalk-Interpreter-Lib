@@ -52,10 +52,7 @@ class FileSystem {
       return nil
     }
     do {
-      let data = try fileHandle.read(upToCount: count)
-      if data == nil {
-        lastError = EBADF
-      }
+      let data = try fileHandle.read(upToCount: count) ?? Data()
       return data
     } catch {
       lastError = EINVAL

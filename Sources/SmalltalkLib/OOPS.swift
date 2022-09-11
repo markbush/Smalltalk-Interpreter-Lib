@@ -30,7 +30,11 @@ enum OOPS {
   static let ClassFloatPointer: OOP = 20
 
   static let ClassSemaphorePointer: OOP = 38
+  static let ClassAssociationPointer: OOP = 132
   static let ClassDisplayScreenPointer: OOP = 834
+  static let ClassDictionaryPointer: OOP = 1146
+  static let ClassSetPointer: OOP = 1148
+  static let ClassLargeNegativeIntegerPointer: OOP = 7584
   static let ClassUndefinedObject: OOP = 25728
 
   // Selectors
@@ -41,4 +45,11 @@ enum OOPS {
   // Tables
   static let SpecialSelectorsPointer: OOP = 48
   static let CharacterTablePointer: OOP = 50
+
+  // Global variables
+  static let MinHiPointer: OOP = 7602
+  static let MaxHiPointer: OOP = 35812
+
+  // Methods
+  static let TimeCurrentTimeMethod: OOP = 7082
 }

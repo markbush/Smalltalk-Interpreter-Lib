@@ -13,7 +13,15 @@ typealias OOP = Word
 class DictionaryObjectMemory : ObjectMemory {
   static var nextOop: OOP = 65534
   static let RootObjects = stride(from: OOPS.NilPointer, through: OOPS.ClassSymbolPointer, by: 2)
+  let KeyIndex = 0
+  let ValueIndex = 1
   let ClassNameIndex = 6
+  let MinValIndex = 9
+  let MaxValIndex = 10
+  let MaxBitsIndex = 11
+  let MaxBytesIndex = 12
+  let M570Index = 5
+  let M571Index = 6
   let BytesPerWord = MemoryLayout<Word>.size
   var ByteMasks: [Word] = []
   var ByteShifts: [Int] = []
@@ -48,6 +56,8 @@ class DictionaryObjectMemory : ObjectMemory {
         let imageReader = Smalltalk80ImageFileReader(data)
         imageReader.loadInto(self)
         fixInstructionPointersFromStandardImage()
+        initialiseIntegers()
+        initialiseTimeConstants()
       }
       DictionaryObjectMemory.nextOop = OOP(memory.keys.max() ?? 65534) + 2
       countOf(OOPS.NilPointer, put: Word.max - 1)
@@ -58,7 +68,11 @@ class DictionaryObjectMemory : ObjectMemory {
   func nameForClass(_ classPointer: OOP) -> String {
     let namePointer = fetchPointer(ClassNameIndex, ofObject: classPointer)
     if isStringValued(namePointer) {
-      return stringValueOf(namePointer)
+      var name = stringValueOf(namePointer)
+      if let hash = name.first, hash == "#" {
+        name.removeFirst()
+      }
+      return name
     } else {
       return "<unknown>"
     }
@@ -71,25 +85,85 @@ class DictionaryObjectMemory : ObjectMemory {
     let theClass = fetchClassOf(objectPointer)
     return (theClass == OOPS.ClassSymbolPointer) || (theClass == OOPS.ClassStringPointer) || (theClass == OOPS.ClassCharacterPointer)
   }
+  func stringOf(_ objectPointer: OOP) -> String {
+    return memory[objectPointer]?.object.asString() ?? ""
+  }
   func stringValueOf(_ objectPointer: OOP) -> String {
     if isIntegerObject(objectPointer) {
       return "\(integerValueOf(objectPointer))"
-    }
-    if fetchClassOf(objectPointer) == OOPS.ClassFloatPointer {
-      return memory[objectPointer]?.object.asString() ?? "0.0"
-    }
-    if fetchClassOf(fetchClassOf(objectPointer)) == 60 {
-      return nameForClass(objectPointer)
     }
     switch objectPointer {
     case OOPS.NilPointer: return "nil"
     case OOPS.FalsePointer: return "false"
     case OOPS.TruePointer: return "true"
     case OOPS.SmalltalkPointer: return "Smalltalk"
-    default:
-      if isStringValued(objectPointer) {
-        return memory[objectPointer]?.object.asString() ?? ""
+    default: break
+    }
+    if memory[objectPointer] == nil {
+      return "<undefined>"
+    }
+    let theClass = fetchClassOf(objectPointer)
+    if fetchClassOf(theClass) == 60 {
+      return nameForClass(objectPointer)
+    }
+    switch theClass {
+    case OOPS.ClassAssociationPointer:
+      let key = fetchPointer(KeyIndex, ofObject: objectPointer)
+      let value = fetchPointer(ValueIndex, ofObject: objectPointer)
+      return "(\(stringValueOf(key)) -> \(stringValueOf(value)))"
+    case OOPS.ClassArrayPointer:
+      let arraySize = fetchWordLengthOf(objectPointer)
+      let displaySize = min(256, arraySize)
+      var displayValues = [String](repeating: "", count: displaySize)
+      for i in 0 ..< displaySize {
+        displayValues[i] = stringValueOf(fetchPointer(i, ofObject: objectPointer))
       }
+      if arraySize > displaySize {
+        displayValues.append("...")
+      }
+      return "#("+displayValues.joined(separator: ", ")+")"
+    case OOPS.ClassSetPointer:
+      var displayValues: [String] = []
+      let dictSize = fetchWordLengthOf(objectPointer)
+      let displaySize = min(256, dictSize)
+      var found = 0
+      for i in 1 ..< dictSize {
+        let value = fetchPointer(i, ofObject: objectPointer)
+        if value != OOPS.NilPointer {
+          displayValues.append(stringValueOf(value))
+          found += 1
+          if found >= displaySize {
+            break
+          }
+        }
+      }
+      if dictSize > displaySize {
+        displayValues.append("...")
+      }
+      return "#{"+displayValues.joined(separator: ", ")+"}"
+    case OOPS.ClassDictionaryPointer:
+      var displayValues: [String] = []
+      let dictSize = fetchWordLengthOf(objectPointer)
+      let displaySize = min(256, dictSize)
+      var found = 0
+      for i in 1 ..< dictSize {
+        let value = fetchPointer(i, ofObject: objectPointer)
+        if value != OOPS.NilPointer {
+          displayValues.append(stringValueOf(value))
+          found += 1
+          if found >= displaySize {
+            break
+          }
+        }
+      }
+      if dictSize > displaySize {
+        displayValues.append("...")
+      }
+      return "#{"+displayValues.joined(separator: ", ")+"}"
+    case OOPS.ClassCharacterPointer, OOPS.ClassStringPointer, OOPS.ClassSymbolPointer, OOPS.ClassFloatPointer,
+         OOPS.ClassLargePositiveIntegerPointer, OOPS.ClassLargeNegativeIntegerPointer:
+      return stringOf(objectPointer)
+    default:
       let className = classNameFor(objectPointer)
       if let first = className.first {
         let vowel = ["a", "e", "i", "o", "u"].contains(first.lowercased())
@@ -120,9 +194,19 @@ class DictionaryObjectMemory : ObjectMemory {
   }
   func pointerObjectFromStandardImage(_ objectPointer: UInt16, inClass classOop: UInt16, body: [UInt16]) -> STObject {
     // New object will be the same size
-    let newBody = body.map { objectPointer in OOP(objectPointer) }
     let object = STObject(size: body.count, oddBytes: 0, isPointers: true, inClass: OOP(classOop))
-    object.body = newBody
+    for wordNum in 0 ..< body.count {
+      var value = OOP(body[wordNum])
+      if isIntegerObject(value) {
+        // Fix up negative values
+        var integerValue = integerValueOf(value)
+        if integerValue > 16383 {
+          integerValue = integerValue - 32768
+          value = integerObjectOf(integerValue)
+        }
+      }
+      object.body[wordNum] = value
+    }
     return object
   }
   func byteObjectFromStandardImage(_ objectPointer: UInt16, isOdd: Bool, inClass classOop: UInt16, body: [UInt16]) -> STObject {
@@ -169,7 +253,16 @@ class DictionaryObjectMemory : ObjectMemory {
     let actualSize = numPointers + wordSize
     let object = STObject(size: actualSize, oddBytes: oddBytes, isPointers: false, inClass: OOPS.ClassCompiledMethod)
     for wordNum in 0 ..< numPointers {
-      object.body[wordNum] = OOP(body[wordNum])
+      var value = OOP(body[wordNum])
+      if isIntegerObject(value) {
+        // Fix up negative values
+        var integerValue = integerValueOf(value)
+        if integerValue > 16383 {
+          integerValue = integerValue - 32768
+          value = integerObjectOf(integerValue)
+        }
+      }
+      object.body[wordNum] = value
     }
     for byteNum in 0 ..< byteSize {
       let sourceWordNum: Int = numPointers + (byteNum / 2)
@@ -195,6 +288,45 @@ class DictionaryObjectMemory : ObjectMemory {
     }
     object.body[0] = value
     return object
+  }
+  func initialiseTimeConstants() {
+    let dstStart = 85
+    let dstEnd = 302
+    let tzHours = 0
+    let tzMins = 0
+    let m570 = SignedWord((tzHours << 11) + dstStart)
+    let m571 = SignedWord((tzMins << 9) + dstEnd)
+    storePointer(M570Index, ofObject: OOPS.TimeCurrentTimeMethod, withValue: integerObjectOf(m570))
+    storePointer(M571Index, ofObject: OOPS.TimeCurrentTimeMethod, withValue: integerObjectOf(m571))
+  }
+  func initialiseIntegers() {
+    initialiseSmallIntegers()
+    initialiseLargePositiveIntegers()
+    initialiseLargeNegativeIntegers()
+  }
+  func initialiseSmallIntegers() {
+    let minVal = SignedWord.min / 2
+    let maxVal = SignedWord.max / 2
+    let maxBits = SignedWord(String(maxVal, radix: 2).count)
+    let maxBytes = SignedWord((maxBits + 7) / 8)
+    storePointer(MinValIndex, ofObject: OOPS.ClassSmallInteger, withValue: integerObjectOf(minVal))
+    storePointer(MaxValIndex, ofObject: OOPS.ClassSmallInteger, withValue: integerObjectOf(maxVal))
+    storePointer(MaxBitsIndex, ofObject: OOPS.ClassSmallInteger, withValue: integerObjectOf(maxBits))
+    storePointer(MaxBytesIndex, ofObject: OOPS.ClassSmallInteger, withValue: integerObjectOf(maxBytes))
+  }
+  func initialiseLargePositiveIntegers() {
+    let maxVal = SignedWord.max / 2
+    let maxBits = SignedWord(String(maxVal, radix: 2).count)
+    let maxBytes = SignedWord((maxBits + 7) / 8)
+    let maxHi = maxVal >> ((maxBytes - 1) * 8)
+    storePointer(ValueIndex, ofObject: OOPS.MaxHiPointer, withValue: integerObjectOf(maxHi))
+  }
+  func initialiseLargeNegativeIntegers() {
+    let minVal = SignedWord.min / 2
+    let maxBits = SignedWord(String(minVal, radix: 2).count)
+    let maxBytes = SignedWord((maxBits + 7) / 8)
+    let minHi = -(minVal >> ((maxBytes - 1) * 8))
+    storePointer(ValueIndex, ofObject: OOPS.MinHiPointer, withValue: integerObjectOf(minHi))
   }
   func isMethodContext(_ object: STObject) -> Bool {
     return object.classOop == OOPS.ClassMethodContextPointer

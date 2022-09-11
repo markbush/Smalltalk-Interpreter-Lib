@@ -1,3 +1,5 @@
+import Foundation
+
 class STObject : CustomStringConvertible {
   static let BytesPerWord = MemoryLayout<Word>.size
   let classOop: OOP
@@ -49,15 +51,61 @@ class STObject : CustomStringConvertible {
     return bytes
   }
 
+  func integerString() -> String {
+    var result = ""
+    let bytes = bytes()
+    var i = bytes.count
+    if i == 0 {
+      return "0 <empty>"
+    }
+    var digits = [Int](repeating: 0, count: i * 8)
+    var pos = 0
+    var dest = [Int](repeating: 0, count: i)
+    var source = bytes.map { x in Int(x) }
+    while i > 1 {
+      var rem = 0
+      var j = i
+      while j > 0 {
+        let t = (rem << 8) + source[j - 1]
+        dest[j - 1] = t / 10
+        rem = t % 10
+        j -= 1
+      }
+      pos += 1
+      digits[pos - 1] = rem
+      source = dest
+      if source[i - 1] == 0 {
+        i -= 1
+      }
+    }
+    result += String(dest[0])
+    while pos > 0 {
+      result += String(digits[pos - 1])
+      pos -= 1
+    }
+    return result
+  }
+
   func asString() -> String {
-    if classOop == OOPS.ClassFloatPointer {
-      return "\(asFloat())"
+    switch classOop {
+    case OOPS.ClassFloatPointer: return "\(asFloat())"
+    case OOPS.ClassLargePositiveIntegerPointer, OOPS.ClassLargeNegativeIntegerPointer:
+      let prefix = (classOop == OOPS.ClassLargeNegativeIntegerPointer) ? "-" : ""
+      let bytes = bytes()
+      let hexBytes = bytes.map { b in String(b, radix: 16) }
+      return prefix + integerString() + " \(bytes) [\(hexBytes.joined(separator: ", "))]"
+    default: break
     }
     if isPointers && classOop != OOPS.ClassCharacterPointer {
       return ""
     }
     if let result = String(bytes: bytes(), encoding: .utf8) {
-      return result
+      switch classOop {
+      case OOPS.ClassCharacterPointer: return "$"+result
+      case OOPS.ClassStringPointer: return result
+      case OOPS.ClassSymbolPointer: return "#"+result
+      default: return ""
+      }
     }
     return ""
   }
