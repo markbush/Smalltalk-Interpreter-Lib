@@ -1449,7 +1449,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerNotEqual() {
-    let result: OOP = OOPS.NilPointer
+    var result: OOP = OOPS.NilPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1468,7 +1468,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerMultiply() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1476,8 +1476,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.multiply(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)
@@ -1486,7 +1487,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerDivide() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1494,8 +1495,13 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      if let result = receiver.divide(arg) {
+        integerResult = result.asObjectIn(memory)
+      } else {
+        primitiveFail()
+      }
     }
     if success {
       push(integerResult)
@@ -1512,8 +1518,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.mod(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)
@@ -1530,8 +1537,14 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      if arg.isZero() {
+        primitiveFail()
+      }
+      if success {
+        integerResult = receiver.div(arg).asObjectIn(memory)
+      }
     }
     if success {
       push(integerResult)
@@ -1548,8 +1561,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.quo(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)

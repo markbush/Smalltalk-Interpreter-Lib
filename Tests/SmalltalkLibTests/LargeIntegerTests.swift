@@ -363,4 +363,76 @@ final class LargeIntegerTests: XCTestCase {
     let result = i1.greaterThanOrEqual(i2)
     XCTAssertTrue(result)
   }
+
+  func testMultiplyByZero() throws {
+    let i1 = LargeInteger([4, 3, 2, 1], negative: false)
+    let i2 = LargeInteger([0], negative: false)
+    let result = i1.multiply(i2)
+    XCTAssertEqual(result.bytes.count, 0)
+  }
+
+  func testMultiplyBothPositive() throws {
+    let i1 = LargeInteger([3, 2, 1], negative: false)
+    let i2 = LargeInteger([2, 1], negative: false)
+    let result = i1.multiply(i2)
+    XCTAssertEqual(result.bytes.count, 4)
+    XCTAssertEqual(result.bytes, [6, 7, 4, 1])
+    XCTAssertFalse(result.negative)
+  }
+
+  func testMultiplyBothNegative() throws {
+    let i1 = LargeInteger([3, 2, 1], negative: true)
+    let i2 = LargeInteger([2, 1], negative: true)
+    let result = i1.multiply(i2)
+    XCTAssertEqual(result.bytes.count, 4)
+    XCTAssertEqual(result.bytes, [6, 7, 4, 1])
+    XCTAssertFalse(result.negative)
+  }
+
+  func testMultiplyOppositeSigns() throws {
+    let i1 = LargeInteger([3, 2, 1], negative: true)
+    let i2 = LargeInteger([2, 1], negative: false)
+    let result = i1.multiply(i2)
+    XCTAssertEqual(result.bytes.count, 4)
+    XCTAssertEqual(result.bytes, [6, 7, 4, 1])
+    XCTAssertTrue(result.negative)
+  }
+
+  func testDivideExact() throws {
+    let i1 = LargeInteger([4, 3, 2, 1], negative: false)
+    let i2 = LargeInteger([2], negative: false)
+    let (quo, rem) = i1.digitDiv(i2, neg: false)
+    XCTAssertEqual(quo.bytes.count, 4)
+    XCTAssertEqual(quo.bytes, [130, 1, 129, 0])
+    XCTAssertTrue(rem.isZero())
+  }
+
+  func testDivideExactSimple() throws {
+    let i1 = LargeInteger([51], negative: false)
+    let i2 = LargeInteger([3], negative: false)
+    let (quo, rem) = i1.digitDiv(i2, neg: false)
+    XCTAssertEqual(quo.bytes.count, 1)
+    XCTAssertEqual(quo.bytes, [17])
+    XCTAssertTrue(rem.isZero())
+  }
+
+  func testDivideWithRemainder() throws {
+    let i1 = LargeInteger([4, 3, 2, 1], negative: false)
+    let i2 = LargeInteger([3], negative: false)
+    let (quo, rem) = i1.digitDiv(i2, neg: false)
+    XCTAssertEqual(quo.bytes.count, 4)
+    XCTAssertEqual(quo.bytes, [1, 1, 86, 0])
+    XCTAssertEqual(rem.bytes.count, 1)
+    XCTAssertEqual(rem.bytes, [1])
+  }
+
+  func testDivideWithRemainderSimple() throws {
+    let i1 = LargeInteger([73], negative: false)
+    let i2 = LargeInteger([17], negative: false)
+    let (quo, rem) = i1.digitDiv(i2, neg: false)
+    XCTAssertEqual(quo.bytes.count, 1)
+    XCTAssertEqual(quo.bytes, [4])
+    XCTAssertEqual(rem.bytes.count, 1)
+    XCTAssertEqual(rem.bytes, [5])
+  }
 }
