@@ -1510,7 +1510,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerMod() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1529,7 +1529,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerDiv() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1553,7 +1553,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerQuo() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1572,7 +1572,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerBitAnd() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1580,8 +1580,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.bitAnd(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)
@@ -1590,7 +1591,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerBitOr() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1598,8 +1599,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.bitOr(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)
@@ -1608,7 +1610,7 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerBitXor() {
-    let integerResult: OOP = OOPS.ZeroPointer
+    var integerResult: OOP = OOPS.ZeroPointer
     let integerArgument = popStack()
     let integerReceiver = popStack()
     let argClass = memory.fetchClassOf(integerArgument)
@@ -1616,8 +1618,9 @@ class StandardInterpreter : Interpreter {
     success(argClass == OOPS.ClassLargePositiveIntegerPointer || argClass == OOPS.ClassLargeNegativeIntegerPointer)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      let arg = LargeInteger(bytesOf(integerArgument), negative: negative(integerArgument))
+      integerResult = receiver.bitXor(arg).asObjectIn(memory)
     }
     if success {
       push(integerResult)
@@ -1626,14 +1629,14 @@ class StandardInterpreter : Interpreter {
     }
   }
   func primitiveLargeIntegerBitShift() {
-    let integerResult: OOP = OOPS.ZeroPointer
-    let _ = popInteger() // shift arg must be SmallInteger
+    var integerResult: OOP = OOPS.ZeroPointer
+    let integerArgument = popInteger() // shift arg must be SmallInteger
     let integerReceiver = popStack()
     let receiverClass = memory.fetchClassOf(integerReceiver)
     success(receiverClass == OOPS.ClassLargePositiveIntegerPointer || receiverClass == OOPS.ClassLargeNegativeIntegerPointer)
     if success {
-      // Perform function
-      primitiveFail()
+      let receiver = LargeInteger(bytesOf(integerReceiver), negative: negative(integerReceiver))
+      integerResult = receiver.bitShift(integerArgument).asObjectIn(memory)
     }
     if success {
       push(integerResult)

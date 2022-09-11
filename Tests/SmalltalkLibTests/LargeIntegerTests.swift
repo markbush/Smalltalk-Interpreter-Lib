@@ -42,6 +42,14 @@ final class LargeIntegerTests: XCTestCase {
     XCTAssertFalse(result.negative)
   }
 
+  func testSubtractFromZero() throws {
+    let zero = LargeInteger([0], negative: false)
+    let i = LargeInteger([4, 3, 2, 1], negative: false)
+    let result = zero.subtract(i)
+    XCTAssertEqual(result.bytes, [4, 3, 2, 1])
+    XCTAssertTrue(result.negative)
+  }
+
   func testPositiveLessThanTrue() throws {
     let i1 = LargeInteger([4, 3, 2, 1], negative: false)
     let i2 = LargeInteger([5, 4, 3, 2], negative: false)
@@ -434,5 +442,29 @@ final class LargeIntegerTests: XCTestCase {
     XCTAssertEqual(quo.bytes, [4])
     XCTAssertEqual(rem.bytes.count, 1)
     XCTAssertEqual(rem.bytes, [5])
+  }
+
+  func testAnd() throws {
+    let i1 = LargeInteger([57], negative: false)
+    let i2 = LargeInteger([23], negative: false)
+    let result = i1.bitAnd(i2)
+    XCTAssertEqual(result.bytes.count, 1)
+    XCTAssertEqual(result.bytes, [17])
+  }
+
+  func testOr() throws {
+    let i1 = LargeInteger([57], negative: false)
+    let i2 = LargeInteger([23], negative: false)
+    let result = i1.bitOr(i2)
+    XCTAssertEqual(result.bytes.count, 1)
+    XCTAssertEqual(result.bytes, [63])
+  }
+
+  func testXor() throws {
+    let i1 = LargeInteger([57], negative: false)
+    let i2 = LargeInteger([23], negative: false)
+    let result = i1.bitXor(i2)
+    XCTAssertEqual(result.bytes.count, 1)
+    XCTAssertEqual(result.bytes, [46])
   }
 }

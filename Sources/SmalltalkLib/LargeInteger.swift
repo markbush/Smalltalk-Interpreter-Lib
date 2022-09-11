@@ -1,7 +1,19 @@
 import Foundation
 
+enum LogicOp {
+case bitAnd, bitOr, bitXor
+  func perform(_ b1: Int, _ b2: Int) -> Int {
+    switch self {
+    case .bitAnd: return b1 & b2
+    case .bitOr: return b1 | b2
+    case .bitXor: return b1 ^ b2
+    }
+  }
+}
+
 class LargeInteger : CustomStringConvertible {
   static let BytesPerWord = MemoryLayout<Word>.size
+  static let Masks: [UInt8] = [1, 3, 7, 15, 31, 63, 127, 255]
   var bytes: [UInt8]
   let negative: Bool
 
@@ -186,6 +198,40 @@ class LargeInteger : CustomStringConvertible {
     } else {
       return false
     }
+  }
+  func bitAnd(_ arg: LargeInteger) -> LargeInteger {
+    arg.truncate()
+    return digitLogic(arg, op: .bitAnd, length: max(bytes.count, arg.bytes.count))
+  }
+  func bitOr(_ arg: LargeInteger) -> LargeInteger {
+    arg.truncate()
+    return digitLogic(arg, op: .bitOr, length: max(bytes.count, arg.bytes.count))
+  }
+  func bitXor(_ arg: LargeInteger) -> LargeInteger {
+    arg.truncate()
+    return digitLogic(arg, op: .bitXor, length: max(bytes.count, arg.bytes.count))
+  }
+  func bitShift(_ anInteger: SignedWord) -> LargeInteger {
+    if anInteger >= 0 {
+      return digitLshift(Int(anInteger & 0x07), bytes: Int(anInteger >> 3), lookFirst: true)
+    }
+    let abs = 0 - anInteger
+    var result = digitRshift(Int(anInteger & 0x07), bytes: Int(anInteger >> 3), lookFirst: bytes.count)
+    result.truncate()
+    if negative && anyBitsTo(Int(abs)) {
+      result = result.subtract(LargeInteger([1], negative: false))
+    }
+    return result
+  }
+  func anyBitsTo(_ pos: Int) -> Bool {
+    for i in 1 ... ((pos - 1) / 8) {
+      if digitAt(i) != 0 {
+        return true
+      }
+    }
+    let last = digitAt((pos + 7) / 8)
+    let mask = LargeInteger.Masks[(pos - 1) % 8]
+    return (last & mask) != 0
   }
   func digitAdd(_ arg: LargeInteger) -> LargeInteger {
     var accum = 0
@@ -428,6 +474,61 @@ class LargeInteger : CustomStringConvertible {
       r.digitAt(i - b, put: value)
       x = digit << n
     }
+    r.truncate()
     return r
+  }
+  func digitLogic(_ arg: LargeInteger, op: LogicOp, length len: Int) -> LargeInteger {
+    let neg1 = negative
+    let neg2 = arg.negative
+    let neg1Val = neg1 ? -1 : 0
+    let neg2Val = neg2 ? -1 : 0
+    let rneg = op.perform(neg1Val, neg2Val) < 0
+    let result = LargeInteger(len, negative: rneg)
+    var rz = true
+    var z1 = true
+    var z2 = true
+    for i in 1 ... len {
+      var b1 = Int(digitAt(i))
+      if neg1 {
+        if z1 {
+          if b1 != 0 {
+            z1 = false
+            b1 = 0x100 - b1
+          }
+        } else {
+          b1 = 0xff - b1
+        }
+      }
+      var b2 = Int(arg.digitAt(i))
+      if neg2 {
+        if z2 {
+          if b2 != 0 {
+            z2 = false
+            b2 = 0x100 - b2
+          }
+        } else {
+          b2 = 0xff - b2
+        }
+      }
+      let b = op.perform(b1, b2)
+      if b == 0 {
+        result.digitAt(i, put: 0)
+      } else {
+        var value = 0
+        if rneg {
+          if rz {
+            rz = false
+            value = 0x100 - b
+          } else {
+            value = 0xff - b
+          }
+        } else {
+          value = b
+        }
+        result.digitAt(i, put: UInt8(value))
+      }
+    }
+    result.truncate()
+    return result
   }
 }
